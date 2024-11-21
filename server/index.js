@@ -22,7 +22,9 @@ class GameServer {
             players: [],
             bombs: [],
             powerUps: [],
-            blocks: []
+            blocks: [],
+            levelVotes: {},
+            selectedLevel: null
         };
         this.setupServer();
     }
@@ -74,6 +76,9 @@ class GameServer {
             case 'unready':
                 this.handlePlayerUnready(ws, payload);
                 break;
+            case 'voteLevel':
+                this.handleLevelVote(ws, payload);
+                break;
             case 'move':
                 this.handlePlayerMove(ws, payload);
                 break;
@@ -91,6 +96,81 @@ class GameServer {
                 break;
             default:
                 console.warn('Unknown message type:', type);
+        }
+    }
+
+    handleLevelVote(ws, data) {
+        const { sessionId, level } = data;
+        const player = this.players.get(ws);
+        if (!player || player.id !== sessionId) return;
+
+        // Update vote
+        if (!this.gameState.levelVotes[level]) {
+            this.gameState.levelVotes[level] = 0;
+        }
+        
+        // Remove previous vote if exists
+        Object.keys(this.gameState.levelVotes).forEach(l => {
+            if (this.gameState.levelVotes[l] > 0 && player.votedLevel === l) {
+                this.gameState.levelVotes[l]--;
+            }
+        });
+
+        // Add new vote
+        this.gameState.levelVotes[level]++;
+        player.votedLevel = level;
+
+        // Broadcast updated votes
+        this.broadcastMessage({
+            type: 'levelVoted',
+            payload: {
+                levelVotes: this.gameState.levelVotes
+            }
+        });
+    }
+
+    selectWinningLevel() {
+        const votes = this.gameState.levelVotes;
+        const levels = Object.keys(votes);
+        
+        if (levels.length === 0) {
+            // No votes, select random level
+            const allLevels = ['L1', 'L2', 'L3', 'L4', 'L5', 'L6'];
+            return allLevels[Math.floor(Math.random() * allLevels.length)];
+        }
+
+        // Find highest vote count
+        const maxVotes = Math.max(...Object.values(votes));
+        
+        // Get all levels with max votes
+        const topLevels = levels.filter(level => votes[level] === maxVotes);
+        
+        // Randomly select from top voted levels
+        return topLevels[Math.floor(Math.random() * topLevels.length)];
+    }
+
+    checkGameStart() {
+        const players = Array.from(this.players.values());
+        if (players.length >= 2 && players.every(p => p.ready)) {
+            // Select winning level before starting
+            this.gameState.selectedLevel = this.selectWinningLevel();
+            
+            // Broadcast selected level
+            this.broadcastMessage({
+                type: 'levelSelected',
+                payload: {
+                    selectedLevel: this.gameState.selectedLevel
+                }
+            });
+
+            // Start game countdown
+            this.broadcastMessage({
+                type: 'gameStarting',
+                payload: {
+                    countdown: 5,
+                    selectedLevel: this.gameState.selectedLevel
+                }
+            });
         }
     }
 
@@ -121,17 +201,6 @@ class GameServer {
             return;
         }
 
-        // Check for duplicate nicknames
-        if (this.gameState.players.some(p => p.nickname === nickname)) {
-            ws.send(JSON.stringify({ 
-                type: 'error', 
-                payload: { 
-                    message: 'Nickname already taken' 
-                }
-            }));
-            return;
-        }
-
         console.log('Creating new player:', nickname, sessionId);
         const player = {
             id: sessionId,
@@ -143,7 +212,8 @@ class GameServer {
                 flames: 1,
                 speed: 1
             },
-            ready: false
+            ready: false,
+            votedLevel: null
         };
 
         this.players.set(ws, player);
@@ -158,7 +228,9 @@ class GameServer {
                 players: this.gameState.players,
                 readyPlayers: Array.from(this.players.values())
                     .filter(p => p.ready)
-                    .map(p => p.id)
+                    .map(p => p.id),
+                levelVotes: this.gameState.levelVotes,
+                selectedLevel: this.gameState.selectedLevel
             }
         }));
 
@@ -296,18 +368,6 @@ class GameServer {
             { x: 13, y: 11 }
         ];
         return positions[playerIndex] || positions[0];
-    }
-
-    checkGameStart() {
-        const players = Array.from(this.players.values());
-        if (players.length >= 2 && players.every(p => p.ready)) {
-            this.broadcastMessage({
-                type: 'gameStarting',
-                payload: {
-                    countdown: 5
-                }
-            });
-        }
     }
 
     broadcastMessage(message, exclude = null) {
