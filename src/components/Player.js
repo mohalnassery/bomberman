@@ -21,20 +21,30 @@ export class Player {
         this.bombsPlaced = 0;
         this.killCount = 0;
         this.powerUpsCollected = 0;
+        this.boundKeyDown = this.handleKeyDown.bind(this);
+        this.boundKeyUp = this.handleKeyUp.bind(this);
         this.initControls();
     }
 
     initControls() {
-        on('keydown', 'body', (event) => {
-            this.keysPressed[event.key] = true;
-            if (event.key === ' ') {
-                this.placeBomb();
-            }
-        });
-        
-        on('keyup', 'body', (event) => {
-            this.keysPressed[event.key] = false;
-        });
+        document.addEventListener('keydown', this.boundKeyDown);
+        document.addEventListener('keyup', this.boundKeyUp);
+    }
+    
+    handleKeyDown(event) {
+        this.keysPressed[event.key] = true;
+        if (event.key === ' ' && !this.isDead) {
+            this.placeBomb();
+        }
+    }
+    
+    handleKeyUp(event) {
+        this.keysPressed[event.key] = false;
+    }
+    
+    destroy() {
+        document.removeEventListener('keydown', this.boundKeyDown);
+        document.removeEventListener('keyup', this.boundKeyUp);
     }
 
     setPosition(position) {
@@ -79,39 +89,60 @@ export class Player {
         );
     }
 
-    move() {
-        if (this.isMoving) return;
-
-        const oldPosition = { ...this.position };
-        let newX = this.position.x;
-        let newY = this.position.y;
-        const moveSpeed = this.speed;
-
-        // Calculate new position based on input
-        if (this.keysPressed['ArrowUp']) newY -= moveSpeed;
-        if (this.keysPressed['ArrowDown']) newY += moveSpeed;
-        if (this.keysPressed['ArrowLeft']) newX -= moveSpeed;
-        if (this.keysPressed['ArrowRight']) newX += moveSpeed;
-
-        // Check for collisions at the new position
-        if (!this.checkCollision(newX, newY)) {
-            // Update position if no collision
-            this.setPosition({ x: newX, y: newY });
-
-            // Send position update if changed
-            if (oldPosition.x !== this.position.x || oldPosition.y !== this.position.y) {
-                this.isMoving = true;
-                webSocket.send('move', { position: this.position });
-                
-                // Reset moving flag after movement animation
-                setTimeout(() => {
-                    this.isMoving = false;
-                }, 100);
+    update(deltaTime) {
+        if (this.isDead) return;
+        
+        let dx = 0;
+        let dy = 0;
+        
+        if (this.keysPressed['ArrowLeft']) dx -= this.speed * deltaTime;
+        if (this.keysPressed['ArrowRight']) dx += this.speed * deltaTime;
+        if (this.keysPressed['ArrowUp']) dy -= this.speed * deltaTime;
+        if (this.keysPressed['ArrowDown']) dy += this.speed * deltaTime;
+        
+        if (dx !== 0 || dy !== 0) {
+            const newX = this.position.x + dx;
+            const newY = this.position.y + dy;
+            
+            // Check collision with grid boundaries
+            if (newX < 0 || newX >= this.gameMap.width || newY < 0 || newY >= this.gameMap.height) {
+                return;
             }
+            
+            // Check collision with walls and blocks
+            const gridX = Math.floor(newX);
+            const gridY = Math.floor(newY);
+            const cell = this.gameMap.grid[gridY][gridX];
+            
+            if (cell.type === 'wall' || cell.type === 'block') {
+                return;
+            }
+            
+            // Check for power-ups
+            if (cell.type === 'powerup') {
+                this.collectPowerUp(cell.powerUpType);
+                cell.type = 'empty';
+                cell.powerUpType = null;
+            }
+            
+            // Update position
+            this.setPosition({ x: newX, y: newY });
         }
-
-        // Check for power-ups
-        this.checkPowerUps();
+    }
+    
+    collectPowerUp(type) {
+        switch (type) {
+            case 'bomb':
+                this.maxBombs++;
+                break;
+            case 'flame':
+                this.flameRange++;
+                break;
+            case 'speed':
+                this.speed += 0.2;
+                break;
+        }
+        this.powerUpsCollected++;
     }
 
     checkPowerUps() {
@@ -270,10 +301,6 @@ export class Player {
             return this.takeDamage();
         }
         return false;
-    }
-
-    update() {
-        this.move();
     }
 
     render(container) {

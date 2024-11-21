@@ -3,9 +3,9 @@ import { $ } from '../utils/helpers.js';
 
 export class PowerUp {
     static TYPES = {
-        BOMB: 'Bombs',
-        FLAME: 'Flames',
-        SPEED: 'Speed'
+        BOMB: 'bomb',
+        FLAME: 'flame',
+        SPEED: 'speed'
     };
 
     static getRandomType() {
@@ -13,33 +13,65 @@ export class PowerUp {
         return types[Math.floor(Math.random() * types.length)];
     }
 
-    constructor(type, position, map) {
+    constructor(type, position, gameMap) {
         this.type = type;
         this.position = position;
-        this.map = map;
+        this.gameMap = gameMap;
         this.collected = false;
+        this.element = null;
+    }
+
+    spawn() {
+        const cell = $(`.cell[data-x="${this.position.x}"][data-y="${this.position.y}"]`);
+        if (cell) {
+            // Add spawn animation
+            cell.classList.add('power-up-spawn');
+            setTimeout(() => {
+                cell.classList.remove('power-up-spawn');
+                cell.classList.add('power-up', `power-up-${this.type}`);
+            }, 500);
+
+            // Update game map
+            const mapCell = this.gameMap.grid[this.position.y][this.position.x];
+            mapCell.type = 'powerup';
+            mapCell.powerUpType = this.type;
+            mapCell.powerUp = this;
+        }
     }
 
     collect(player) {
         if (this.collected) return;
         
         this.collected = true;
-        player.applyPowerUp(this.type);
         
-        // Remove power-up from the map grid
-        const cell = this.map.grid[this.position.y][this.position.x];
+        // Apply power-up effect
+        switch (this.type) {
+            case PowerUp.TYPES.BOMB:
+                player.maxBombs++;
+                break;
+            case PowerUp.TYPES.FLAME:
+                player.flameRange++;
+                break;
+            case PowerUp.TYPES.SPEED:
+                player.speed += 0.2;
+                break;
+        }
+        
+        player.powerUpsCollected++;
+        
+        // Update game map
+        const cell = this.gameMap.grid[this.position.y][this.position.x];
         if (cell) {
-            cell.hasPowerUp = false;
+            cell.type = 'empty';
             cell.powerUpType = null;
             cell.powerUp = null;
         }
 
-        // Remove power-up visuals
+        // Show collection animation
         const cellElement = $(`.cell[data-x="${this.position.x}"][data-y="${this.position.y}"]`);
         if (cellElement) {
-            cellElement.classList.remove('power-up', this.type.toLowerCase());
+            cellElement.classList.remove('power-up', `power-up-${this.type}`);
             
-            // Add collection animation
             const animation = document.createElement('div');
             animation.className = 'power-up-collect';
             animation.textContent = this.getDisplayText();
@@ -55,37 +87,20 @@ export class PowerUp {
     getDisplayText() {
         switch (this.type) {
             case PowerUp.TYPES.BOMB:
-                return '+1 💣';
+                return '+1 Bomb';
             case PowerUp.TYPES.FLAME:
-                return '+1 🔥';
+                return '+1 Range';
             case PowerUp.TYPES.SPEED:
-                return '🏃‍♂️';
+                return '+Speed';
             default:
                 return '';
         }
     }
 
-    render() {
-        if (this.collected) return;
-
-        // Update map grid
-        const cell = this.map.grid[this.position.y][this.position.x];
+    destroy() {
+        const cell = $(`.cell[data-x="${this.position.x}"][data-y="${this.position.y}"]`);
         if (cell) {
-            cell.hasPowerUp = true;
-            cell.powerUpType = this.type;
-            cell.powerUp = this;
-        }
-
-        // Render power-up visuals
-        const cellElement = $(`.cell[data-x="${this.position.x}"][data-y="${this.position.y}"]`);
-        if (cellElement) {
-            cellElement.classList.add('power-up', this.type.toLowerCase());
-            
-            // Add power-up icon
-            const icon = document.createElement('div');
-            icon.className = 'power-up-icon';
-            icon.textContent = this.getDisplayText();
-            cellElement.appendChild(icon);
+            cell.classList.remove('power-up', `power-up-${this.type}`);
         }
     }
 }

@@ -64,6 +64,12 @@ class GameServer {
             case 'join':
                 this.handlePlayerJoin(ws, data);
                 break;
+            case 'ready':
+                this.handlePlayerReady(ws, data);
+                break;
+            case 'unready':
+                this.handlePlayerUnready(ws, data);
+                break;
             case 'move':
                 this.handlePlayerMove(ws, data);
                 break;
@@ -73,8 +79,10 @@ class GameServer {
             case 'chat':
                 this.broadcastMessage({
                     type: 'chat',
-                    message: data.message,
-                    player: this.players.get(ws)?.nickname
+                    payload: {
+                        message: data.message,
+                        player: this.players.get(ws)?.nickname
+                    }
                 });
                 break;
             default:
@@ -83,14 +91,19 @@ class GameServer {
     }
 
     handlePlayerJoin(ws, data) {
-        const { nickname } = data;
+        const { nickname, sessionId } = data;
         if (this.gameState.players.length >= 4) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Game is full' }));
+            ws.send(JSON.stringify({ 
+                type: 'error', 
+                payload: { 
+                    message: 'Game is full' 
+                }
+            }));
             return;
         }
 
         const player = {
-            id: this.gameState.players.length + 1,
+            id: sessionId,
             nickname,
             position: this.getStartPosition(this.gameState.players.length),
             lives: 3,
@@ -98,23 +111,59 @@ class GameServer {
                 bombs: 1,
                 flames: 1,
                 speed: 1
-            }
+            },
+            ready: false
         };
 
         this.players.set(ws, player);
         this.gameState.players.push(player);
 
-        // Send initial game state to the new player
+        // Send current game state to the new player
         ws.send(JSON.stringify({
-            type: 'init',
-            gameState: this.gameState,
-            playerId: player.id
+            type: 'gameState',
+            payload: {
+                players: this.gameState.players,
+                readyPlayers: Array.from(this.players.values())
+                    .filter(p => p.ready)
+                    .map(p => p.id)
+            }
         }));
 
-        // Broadcast updated player list to all clients
+        // Broadcast new player to all clients
         this.broadcastMessage({
-            type: 'playerJoin',
-            player
+            type: 'playerJoined',
+            payload: {
+                player
+            }
+        });
+    }
+
+    handlePlayerReady(ws, data) {
+        const player = this.players.get(ws);
+        if (!player) return;
+
+        player.ready = true;
+        this.broadcastMessage({
+            type: 'playerReady',
+            payload: {
+                playerId: player.id
+            }
+        });
+
+        // Check if all players are ready to start the game
+        this.checkGameStart();
+    }
+
+    handlePlayerUnready(ws, data) {
+        const player = this.players.get(ws);
+        if (!player) return;
+
+        player.ready = false;
+        this.broadcastMessage({
+            type: 'playerUnready',
+            payload: {
+                playerId: player.id
+            }
         });
     }
 
@@ -128,8 +177,10 @@ class GameServer {
         // Broadcast movement to all clients except sender
         this.broadcastMessage({
             type: 'playerMove',
-            playerId: player.id,
-            position: data.position
+            payload: {
+                playerId: player.id,
+                position: data.position
+            }
         }, ws);
     }
 
@@ -149,7 +200,9 @@ class GameServer {
         // Broadcast bomb placement to all clients
         this.broadcastMessage({
             type: 'bombPlaced',
-            bomb
+            payload: {
+                bomb
+            }
         });
 
         // Schedule bomb explosion
@@ -168,8 +221,10 @@ class GameServer {
         // Broadcast explosion to all clients
         this.broadcastMessage({
             type: 'bombExplode',
-            bomb,
-            affected
+            payload: {
+                bomb,
+                affected
+            }
         });
     }
 
@@ -184,7 +239,9 @@ class GameServer {
         // Broadcast player disconnection
         this.broadcastMessage({
             type: 'playerLeave',
-            playerId: player.id
+            payload: {
+                playerId: player.id
+            }
         });
     }
 
@@ -208,9 +265,21 @@ class GameServer {
         return positions[playerIndex] || positions[0];
     }
 
+    checkGameStart() {
+        const players = Array.from(this.players.values());
+        if (players.length >= 2 && players.every(p => p.ready)) {
+            this.broadcastMessage({
+                type: 'gameStarting',
+                payload: {
+                    countdown: 5
+                }
+            });
+        }
+    }
+
     broadcastMessage(message, exclude = null) {
         this.wss.clients.forEach(client => {
-            if (client !== exclude && client.readyState === WebSocket.OPEN) {
+            if (client !== exclude && client.readyState === 1) { 
                 client.send(JSON.stringify(message));
             }
         });

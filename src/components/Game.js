@@ -121,13 +121,45 @@ export class Game extends Component {
     }
 
     handleBombExplode(data) {
-        const { position, affectedCells } = data;
-        // Handle bomb explosion effects
+        const { position, affectedCells, playerId } = data;
+        
+        // Handle bomb explosion effects on blocks and items
         affectedCells.forEach(cell => {
             if (this.gameMap.grid[cell.y][cell.x]) {
-                this.gameMap.grid[cell.y][cell.x].type = 'empty';
+                const currentCell = this.gameMap.grid[cell.y][cell.x];
+                
+                // Handle block destruction
+                if (currentCell.type === 'block') {
+                    currentCell.type = 'empty';
+                    
+                    // Chance to spawn power-up
+                    if (Math.random() < 0.3) {  // 30% chance
+                        const powerUpTypes = ['bomb', 'flame', 'speed'];
+                        const randomType = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+                        this.gameMap.addPowerUp(cell.x, cell.y, randomType);
+                    }
+                }
+                
+                // Check for players in explosion range
+                this.players.forEach((player) => {
+                    const playerX = Math.floor(player.position.x);
+                    const playerY = Math.floor(player.position.y);
+                    
+                    if (playerX === cell.x && playerY === cell.y && !player.isDead) {
+                        player.die();
+                        if (playerId && playerId !== player.id) {
+                            const killer = this.players.get(playerId);
+                            if (killer) {
+                                killer.killCount++;
+                            }
+                        }
+                    }
+                });
             }
         });
+        
+        // Remove the bomb from active bombs
+        this.gameMap.removeBomb(position);
     }
 
     handlePlayerDeath(data) {

@@ -10,13 +10,25 @@ export class GameMap {
         this.currentLevel = 1;
         this.activeBombs = new Map(); // Track active bombs
         this.explosions = new Map(); // Track active explosions
+        this.playerStartPositions = [];
     }
 
     async loadLevel(levelNumber) {
         try {
-            const response = await fetch(`/src/levels/L${levelNumber}.TXT`);
+            // Validate level number
+            if (!Number.isInteger(levelNumber) || levelNumber < 1) {
+                throw new Error('Invalid level number');
+            }
+            
+            // Use relative path and handle errors
+            const response = await fetch(`../levels/L${levelNumber}.TXT`);
+            if (!response.ok) {
+                throw new Error(`Failed to load level ${levelNumber}`);
+            }
+            
             const mapData = await response.text();
             this.parseMapData(mapData);
+            this.currentLevel = levelNumber;
         } catch (error) {
             console.error('Error loading level:', error);
             this.generateMap(); // Fallback to random map
@@ -25,11 +37,24 @@ export class GameMap {
 
     parseMapData(mapData) {
         const rows = mapData.trim().split('\n');
+        
+        // Validate map dimensions
+        if (rows.length !== this.height) {
+            throw new Error(`Invalid map height: ${rows.length}, expected ${this.height}`);
+        }
+        
         this.grid = [];
+        this.playerStartPositions = [];
         
         for (let y = 0; y < rows.length; y++) {
+            const cells = rows[y].trim().split('');
+            
+            // Validate row width
+            if (cells.length !== this.width) {
+                throw new Error(`Invalid map width at row ${y}: ${cells.length}, expected ${this.width}`);
+            }
+            
             this.grid[y] = [];
-            const cells = rows[y].split('');
             
             for (let x = 0; x < cells.length; x++) {
                 const char = cells[x];
@@ -46,21 +71,41 @@ export class GameMap {
                     case '2':
                     case '3':
                     case '4':
-                        cellType = 'empty'; // Player starting position
+                        cellType = 'empty';
+                        this.playerStartPositions.push({
+                            id: parseInt(char),
+                            position: { x, y }
+                        });
+                        break;
+                    case 'P':
+                        cellType = 'powerup';
+                        break;
+                    case ' ':
+                        cellType = 'empty';
                         break;
                     default:
-                        cellType = 'empty';
+                        throw new Error(`Invalid map character at (${x}, ${y}): ${char}`);
                 }
                 
                 this.grid[y][x] = {
                     type: cellType,
                     hasPlayer: false,
                     hasBomb: false,
-                    hasPowerUp: false,
-                    hasExplosion: false,
-                    playerStart: ['1','2','3','4'].includes(char) ? char : null
+                    powerUpType: cellType === 'powerup' ? this.getRandomPowerUpType() : null
                 };
             }
+        }
+    }
+    
+    getRandomPowerUpType() {
+        const types = ['bomb', 'flame', 'speed'];
+        return types[Math.floor(Math.random() * types.length)];
+    }
+    
+    addPowerUp(x, y, type) {
+        if (this.grid[y][x] && this.grid[y][x].type === 'empty') {
+            this.grid[y][x].type = 'powerup';
+            this.grid[y][x].powerUpType = type;
         }
     }
 
@@ -125,6 +170,7 @@ export class GameMap {
                 let cellClass = 'cell';
                 if (cell.type === 'wall') cellClass += ' wall';
                 if (cell.type === 'block') cellClass += ' block';
+                if (cell.type === 'powerup') cellClass += ' powerup';
                 mapHtml += `<div class="${cellClass}" data-x="${x}" data-y="${y}"></div>`;
             }
             mapHtml += '</div>';

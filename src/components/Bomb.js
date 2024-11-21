@@ -1,79 +1,101 @@
 // src/components/Bomb.js
 import { $ } from '../utils/helpers.js';
-import { Map } from './Map.js';
+import { GameMap } from './Map.js';
 import { PowerUp } from './PowerUp.js';
 
 export class Bomb {
-    constructor(position, flameRange, ownerId, map) {
+    constructor(position, flameRange, ownerId, gameMap) {
         this.position = position;
         this.flameRange = flameRange;
         this.ownerId = ownerId;
         this.timer = 3000; // 3 seconds
-        this.map = map;
+        this.gameMap = gameMap;
+        this.explosionTimeout = null;
+        this.chainReactionTimeout = null;
         this.startTimer();
     }
 
     startTimer() {
         this.render();
-        setTimeout(() => {
+        this.explosionTimeout = setTimeout(() => {
             this.explode();
         }, this.timer);
     }
 
     explode() {
-        // Handle explosion logic
         const explosionPositions = this.getExplosionPositions();
-        let chainReactionBombs = [];
+        const chainReactionBombs = new Set();
+        const affectedCells = new Set();
 
         explosionPositions.forEach(pos => {
-            const cell = this.map.grid[pos.y][pos.x];
+            const cell = this.gameMap.grid[pos.y][pos.x];
+            if (!cell) return;
+
+            affectedCells.add(`${pos.x},${pos.y}`);
+
             if (cell.type === 'block') {
                 cell.type = 'empty';
-                // Spawn power-up with 30% chance when destroying blocks
                 if (Math.random() < 0.3) {
                     const powerUp = new PowerUp(
                         PowerUp.getRandomType(),
                         { x: pos.x, y: pos.y },
-                        this.map
+                        this.gameMap
                     );
-                    powerUp.render();
+                    powerUp.spawn();
                 }
             }
-            
-            // Check for chain reactions with other bombs
-            if (cell.hasBomb && cell !== this.map.grid[this.position.y][this.position.x]) {
-                chainReactionBombs.push(cell.bomb);
+
+            // Chain reaction with other bombs
+            if (cell.hasBomb) {
+                const bombAtCell = this.gameMap.getBombAt(pos.x, pos.y);
+                if (bombAtCell && bombAtCell !== this) {
+                    chainReactionBombs.add(bombAtCell);
+                }
             }
 
             // Handle player damage
-            const playersInCell = this.map.getPlayersInCell(pos.x, pos.y);
-            playersInCell.forEach(player => {
-                if (player.handleExplosion({ x: pos.x, y: pos.y })) {
-                    // Player died from the explosion
-                    this.map.handlePlayerDeath(player);
+            this.gameMap.getPlayersInCell(pos.x, pos.y).forEach(player => {
+                if (!player.isDead) {
+                    player.handleExplosion(this.ownerId);
                 }
             });
         });
 
-        // Clear the bomb from the original cell
-        const originalCell = this.map.grid[this.position.y][this.position.x];
-        originalCell.hasBomb = false;
-        originalCell.bomb = null;
+        // Trigger chain reactions after a small delay
+        if (chainReactionBombs.size > 0) {
+            this.chainReactionTimeout = setTimeout(() => {
+                chainReactionBombs.forEach(bomb => bomb.explode());
+            }, 100);
+        }
 
-        this.renderExplosion(explosionPositions);
+        this.showExplosionAnimation(Array.from(affectedCells));
+        this.gameMap.removeBomb(this);
+    }
 
-        // Trigger chain reactions immediately
-        chainReactionBombs.forEach(bomb => {
-            if (bomb) {
-                clearTimeout(bomb.timer);
-                bomb.explode();
+    showExplosionAnimation(affectedCells) {
+        affectedCells.forEach(cellCoord => {
+            const [x, y] = cellCoord.split(',').map(Number);
+            const cell = $(`.cell[data-x="${x}"][data-y="${y}"]`);
+            if (cell) {
+                cell.classList.add('explosion');
+                setTimeout(() => {
+                    cell.classList.remove('explosion');
+                }, 1000);
             }
         });
+    }
 
-        // Remove explosion after a short delay
-        setTimeout(() => {
-            this.clearExplosion(explosionPositions);
-        }, 500);
+    destroy() {
+        if (this.explosionTimeout) {
+            clearTimeout(this.explosionTimeout);
+        }
+        if (this.chainReactionTimeout) {
+            clearTimeout(this.chainReactionTimeout);
+        }
+        const cell = $(`.cell[data-x="${this.position.x}"][data-y="${this.position.y}"]`);
+        if (cell) {
+            cell.classList.remove('bomb');
+        }
     }
 
     getExplosionPositions() {
@@ -91,8 +113,8 @@ export class Bomb {
             for (let i = 1; i <= this.flameRange; i++) {
                 const x = this.position.x + dir.dx * i;
                 const y = this.position.y + dir.dy * i;
-                if (x < 0 || x >= this.map.width || y < 0 || y >= this.map.height) break;
-                const cell = this.map.grid[y][x];
+                if (x < 0 || x >= this.gameMap.width || y < 0 || y >= this.gameMap.height) break;
+                const cell = this.gameMap.grid[y][x];
                 if (cell.type === 'wall') break;
                 positions.push({ x, y });
                 if (cell.type === 'block') break;
@@ -102,34 +124,10 @@ export class Bomb {
         return positions;
     }
 
-    randomPowerUp() {
-        const powerUps = ['Bombs', 'Flames', 'Speed'];
-        return powerUps[Math.floor(Math.random() * powerUps.length)];
-    }
-
     render() {
         const cell = $(`.cell[data-x="${this.position.x}"][data-y="${this.position.y}"]`);
         if (cell) {
             cell.classList.add('bomb');
         }
-    }
-
-    renderExplosion(positions) {
-        positions.forEach(pos => {
-            const cell = $(`.cell[data-x="${pos.x}"][data-y="${pos.y}"]`);
-            if (cell) {
-                cell.classList.add('explosion');
-                cell.classList.remove('bomb', 'block');
-            }
-        });
-    }
-
-    clearExplosion(positions) {
-        positions.forEach(pos => {
-            const cell = $(`.cell[data-x="${pos.x}"][data-y="${pos.y}"]`);
-            if (cell) {
-                cell.classList.remove('explosion');
-            }
-        });
     }
 }
