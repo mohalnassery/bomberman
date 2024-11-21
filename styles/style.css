@@ -70,19 +70,344 @@ body {
 /* Chat Styles */
 .chat {
     position: absolute;
-    bottom: 0;
-    right: 0;
+    bottom: 20px;
+    right: 20px;
     width: 300px;
-    background: rgba(0,0,0,0.7);
+    background: rgba(20, 20, 20, 0.95);
+    color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+    z-index: 1000;
+}
+
+.chat.minimized {
+    height: 40px !important;
+    overflow: hidden;
+}
+
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(40, 40, 40, 0.95);
+    border-radius: 8px 8px 0 0;
+    cursor: move;
+    user-select: none;
+}
+
+.chat-title {
+    font-weight: bold;
     color: #fff;
 }
-#chat-messages {
-    max-height: 200px;
-    overflow-y: auto;
-    padding: 10px;
+
+.chat-controls {
+    display: flex;
+    gap: 8px;
 }
+
+.chat-controls button {
+    background: none;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.chat-controls button:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.chat-body {
+    display: flex;
+    flex-direction: column;
+    height: 300px;
+}
+
+#chat-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+#chat-messages::-webkit-scrollbar {
+    width: 6px;
+}
+
+#chat-messages::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+}
+
+.chat-message {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: baseline;
+    animation: fadeIn 0.3s ease;
+}
+
+.chat-message.system {
+    color: #888;
+    font-style: italic;
+}
+
+.chat-message.own .player-name {
+    color: #4CAF50;
+}
+
+.timestamp {
+    color: #666;
+    font-size: 0.8em;
+}
+
+.player-name {
+    color: #2196F3;
+    font-weight: bold;
+}
+
+.message {
+    word-break: break-word;
+}
+
+.chat-input-container {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    background: rgba(30, 30, 30, 0.95);
+    border-radius: 0 0 8px 8px;
+}
+
 #chat-input {
-    width: 100%;
-    padding: 10px;
-    box-sizing: border-box;
+    flex-grow: 1;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 8px 12px;
+    color: #fff;
+    font-size: 14px;
+}
+
+#chat-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+#send-btn {
+    background: #2196F3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 0 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#send-btn:hover {
+    background: #1976D2;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Game Container and Camera */
+.game-container {
+    position: relative;
+    transform: translate(var(--camera-x, 0), var(--camera-y, 0));
+    transition: transform 0.1s ease;
+}
+
+/* Player Styles */
+.player-info {
+    position: absolute;
+    top: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    white-space: nowrap;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.player-name {
+    font-weight: bold;
+    color: #fff;
+}
+
+.player-name.dead {
+    color: #666;
+    text-decoration: line-through;
+}
+
+.player-lives {
+    font-size: 14px;
+    line-height: 1;
+}
+
+.player-stats {
+    display: flex;
+    gap: 8px;
+    font-size: 12px;
+    color: #fff;
+}
+
+/* Death Effect */
+.death-effect {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle, rgba(255,0,0,0.5) 0%, rgba(0,0,0,0) 70%);
+    animation: deathPulse 1s ease-out;
+    pointer-events: none;
+}
+
+@keyframes deathPulse {
+    0% {
+        transform: scale(0.5);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+/* Damage Effect */
+.cell.damaged {
+    animation: damageFlash 0.5s ease-out;
+}
+
+@keyframes damageFlash {
+    0%, 50%, 100% {
+        filter: none;
+    }
+    25%, 75% {
+        filter: brightness(2) saturate(2);
+    }
+}
+
+/* Game Over Screen */
+.game-over-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    animation: fadeIn 0.5s ease-out;
+}
+
+.game-over-content {
+    background: rgba(30, 30, 30, 0.95);
+    padding: 40px;
+    border-radius: 16px;
+    text-align: center;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transform: translateY(0);
+    animation: slideIn 0.5s ease-out;
+}
+
+.victory-title {
+    color: #4CAF50;
+    font-size: 48px;
+    margin: 0 0 20px;
+    text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+}
+
+.defeat-title {
+    color: #f44336;
+    font-size: 48px;
+    margin: 0 0 20px;
+    text-shadow: 0 0 10px rgba(244, 67, 54, 0.5);
+}
+
+.game-stats {
+    margin: 30px 0;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+}
+
+.game-over-buttons {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 30px;
+}
+
+.game-over-buttons button {
+    padding: 12px 24px;
+    font-size: 16px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #2196F3;
+    color: white;
+}
+
+.game-over-buttons button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+}
+
+/* Spectator Mode */
+.spectator-indicator {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }

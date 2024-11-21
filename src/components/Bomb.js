@@ -1,6 +1,7 @@
 // src/components/Bomb.js
 import { $ } from '../utils/helpers.js';
 import { Map } from './Map.js';
+import { PowerUp } from './PowerUp.js';
 
 export class Bomb {
     constructor(position, flameRange, ownerId, map) {
@@ -22,21 +23,53 @@ export class Bomb {
     explode() {
         // Handle explosion logic
         const explosionPositions = this.getExplosionPositions();
+        let chainReactionBombs = [];
 
         explosionPositions.forEach(pos => {
             const cell = this.map.grid[pos.y][pos.x];
             if (cell.type === 'block') {
                 cell.type = 'empty';
-                // Chance to spawn power-up
+                // Spawn power-up with 30% chance when destroying blocks
                 if (Math.random() < 0.3) {
-                    cell.hasPowerUp = true;
-                    cell.powerUpType = this.randomPowerUp();
+                    const powerUp = new PowerUp(
+                        PowerUp.getRandomType(),
+                        { x: pos.x, y: pos.y },
+                        this.map
+                    );
+                    powerUp.render();
                 }
             }
-            // Handle damage to players
+            
+            // Check for chain reactions with other bombs
+            if (cell.hasBomb && cell !== this.map.grid[this.position.y][this.position.x]) {
+                chainReactionBombs.push(cell.bomb);
+            }
+
+            // Handle player damage
+            const playersInCell = this.map.getPlayersInCell(pos.x, pos.y);
+            playersInCell.forEach(player => {
+                if (player.handleExplosion({ x: pos.x, y: pos.y })) {
+                    // Player died from the explosion
+                    this.map.handlePlayerDeath(player);
+                }
+            });
         });
 
+        // Clear the bomb from the original cell
+        const originalCell = this.map.grid[this.position.y][this.position.x];
+        originalCell.hasBomb = false;
+        originalCell.bomb = null;
+
         this.renderExplosion(explosionPositions);
+
+        // Trigger chain reactions immediately
+        chainReactionBombs.forEach(bomb => {
+            if (bomb) {
+                clearTimeout(bomb.timer);
+                bomb.explode();
+            }
+        });
+
         // Remove explosion after a short delay
         setTimeout(() => {
             this.clearExplosion(explosionPositions);

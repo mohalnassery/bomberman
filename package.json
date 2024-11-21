@@ -1,0 +1,34 @@
+{
+  "name": "bomberman-dom",
+  "version": "1.0.0",
+  "description": "A multiplayer Bomberman game using DOM manipulation",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server/http-server.js",
+    "server": "node server/index.js",
+    "dev": "concurrently \"npm run server\" \"npm start\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mohalnassery/bomberman.git"
+  },
+  "keywords": [
+    "game",
+    "bomberman",
+    "websocket",
+    "multiplayer"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mohalnassery/bomberman/issues"
+  },
+  "homepage": "https://github.com/mohalnassery/bomberman#readme",
+  "dependencies": {
+    "concurrently": "^8.2.2",
+    "express": "^4.18.2",
+    "ws": "^8.16.0"
+  }
+}

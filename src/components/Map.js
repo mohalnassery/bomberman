@@ -6,6 +6,7 @@ export class Map {
         this.grid = [];
         this.width = 15;
         this.height = 13;
+        this.players = new Map(); // Store player references
     }
 
     generateMap() {
@@ -64,5 +65,47 @@ export class Map {
         }
         mapHtml += '</div>';
         root.innerHTML = mapHtml;
+    }
+
+    getPlayersInCell(x, y) {
+        if (x < 0 || x >= this.width || y < 0 || y >= this.height) {
+            return [];
+        }
+
+        return Array.from(this.players.values()).filter(player => {
+            const playerX = Math.floor(player.position.x);
+            const playerY = Math.floor(player.position.y);
+            return playerX === x && playerY === y;
+        });
+    }
+
+    handlePlayerDeath(player) {
+        // Remove player from their current cell
+        const playerX = Math.floor(player.position.x);
+        const playerY = Math.floor(player.position.y);
+        if (this.grid[playerY][playerX]) {
+            this.grid[playerY][playerX].hasPlayer = false;
+        }
+
+        // Update player state
+        player.isDead = true;
+        
+        // Check if game is over (only one player left)
+        const alivePlayers = Array.from(this.players.values()).filter(p => !p.isDead);
+        if (alivePlayers.length === 1) {
+            // Game over - we have a winner!
+            webSocket.send('gameOver', {
+                winner: alivePlayers[0].id,
+                winnerName: alivePlayers[0].name
+            });
+        }
+    }
+
+    addPlayer(player) {
+        this.players.set(player.id, player);
+    }
+
+    removePlayer(playerId) {
+        this.players.delete(playerId);
     }
 }
