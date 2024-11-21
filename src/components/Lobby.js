@@ -34,9 +34,11 @@ export class Lobby extends Component {
     }
 
     handlePlayerJoined(data) {
+        console.log('Player joined data:', data);
         const state = this.store.getState();
         const { player } = data;
         if (!state.players.some(p => p.id === player.id)) {
+            console.log('Adding player:', player);
             state.players.push(player);
             this.store.setState({
                 players: state.players,
@@ -68,7 +70,6 @@ export class Lobby extends Component {
         state.readyPlayers.add(playerId);
         this.store.setState({ readyPlayers: state.readyPlayers });
         this.updatePlayerList();
-        this.checkGameStart();
     }
 
     handlePlayerUnready(data) {
@@ -85,6 +86,7 @@ export class Lobby extends Component {
     }
 
     handleGameState(data) {
+        console.log('Game state received:', data);
         const { players, readyPlayers } = data;
         this.store.setState({
             players,
@@ -94,27 +96,39 @@ export class Lobby extends Component {
         this.updatePlayerList();
     }
 
+    updatePlayerList() {
+        const state = this.store.getState();
+        console.log('Updating player list with state:', state);
+        const playerList = document.getElementById('playerList');
+        if (!playerList) return;
+
+        playerList.innerHTML = state.players.map(player => {
+            console.log('Rendering player:', player);
+            const isReady = state.readyPlayers.has(player.id);
+            return `
+                <div class="player-item ${isReady ? 'ready' : ''}">
+                    <span class="player-name">${player.nickname || 'Unknown'}</span>
+                    <span class="player-status">${isReady ? '✓ Ready' : 'Not Ready'}</span>
+                </div>
+            `;
+        }).join('');
+
+        // Update player count
+        const countDisplay = document.getElementById('playerCount');
+        if (countDisplay) {
+            countDisplay.textContent = `${state.playerCount}/${state.gameSettings.maxPlayers}`;
+        }
+    }
+
     async handleJoinGame() {
         if (this.isJoined) return;
         
-        const state = this.store.getState();
-        this.nickname = document.getElementById('nickname').value.trim();
+        const nicknameInput = document.getElementById('nickname');
+        this.nickname = nicknameInput.value.trim();
         
         // Validate nickname
         if (this.nickname.length === 0) {
             alert('Please enter a nickname.');
-            return;
-        }
-
-        // Check max players
-        if (state.playerCount >= state.gameSettings.maxPlayers) {
-            alert('Game is full. Please wait for a player to leave.');
-            return;
-        }
-
-        // Check duplicate nicknames
-        if (state.players.some(p => p.nickname === this.nickname)) {
-            alert('Nickname already taken. Please choose another.');
             return;
         }
 
@@ -124,21 +138,27 @@ export class Lobby extends Component {
                 await webSocket.connect();
             }
 
+            const sessionId = this.generateSessionId();
+            console.log('Joining with nickname:', this.nickname, 'sessionId:', sessionId);
+            
             // Send join request
             webSocket.send('join', {
                 nickname: this.nickname,
-                sessionId: this.generateSessionId()
+                sessionId: sessionId
             });
 
             this.isJoined = true;
+            nicknameInput.disabled = true;
             document.getElementById('joinBtn').disabled = true;
             document.getElementById('readyBtn').disabled = false;
             
             // Save player info to localStorage
-            localStorage.setItem('playerInfo', JSON.stringify({
+            const playerInfo = {
                 nickname: this.nickname,
-                sessionId: this.generateSessionId()
-            }));
+                sessionId: sessionId
+            };
+            console.log('Saving player info:', playerInfo);
+            localStorage.setItem('playerInfo', JSON.stringify(playerInfo));
 
         } catch (error) {
             console.error('Failed to join game:', error);
@@ -166,28 +186,6 @@ export class Lobby extends Component {
         if (readyBtn) {
             readyBtn.textContent = isReady ? 'Ready' : 'Not Ready';
             readyBtn.classList.toggle('ready', !isReady);
-        }
-    }
-
-    updatePlayerList() {
-        const state = this.store.getState();
-        const playerList = document.getElementById('playerList');
-        if (!playerList) return;
-
-        playerList.innerHTML = state.players.map(player => {
-            const isReady = state.readyPlayers.has(player.id);
-            return `
-                <div class="player-item ${isReady ? 'ready' : ''}">
-                    <span class="player-name">${player.nickname}</span>
-                    <span class="player-status">${isReady ? '✓ Ready' : 'Not Ready'}</span>
-                </div>
-            `;
-        }).join('');
-
-        // Update player count
-        const countDisplay = document.getElementById('playerCount');
-        if (countDisplay) {
-            countDisplay.textContent = `${state.playerCount}/${state.gameSettings.maxPlayers}`;
         }
     }
 
@@ -227,33 +225,48 @@ export class Lobby extends Component {
         const container = document.getElementById('root');
         
         container.innerHTML = `
-            <div class="lobby">
-                <h1>Bomberman Lobby</h1>
+            <div class="lobby-container">
+                <h1>Game Lobby</h1>
                 <div class="lobby-content">
                     <div class="join-section">
-                        <input type="text" id="nickname" placeholder="Enter your nickname" maxlength="15" />
-                        <button id="joinBtn">Join Game</button>
-                        <button id="readyBtn" disabled>Ready Up</button>
+                        <input type="text" id="nickname" placeholder="Enter your nickname" maxlength="15" ${this.isJoined ? 'disabled' : ''}>
+                        <button id="joinBtn" ${this.isJoined ? 'disabled' : ''}>Join Game</button>
+                        <button id="readyBtn" ${!this.isJoined ? 'disabled' : ''}>Ready Up</button>
                     </div>
                     <div class="lobby-status">
                         <p>Players in lobby: <span id="playerCount">${state.playerCount}/${state.gameSettings.maxPlayers}</span></p>
-                        <div id="playerList" class="player-list"></div>
-                        ${state.gameStarting ? `
-                            <div class="countdown">
-                                Game starting in: ${state.countdown}
-                            </div>
-                        ` : ''}
+                        <div id="playerList" class="player-list">
+                            ${state.players.map(player => `
+                                <div class="player-item ${state.readyPlayers.has(player.id) ? 'ready' : ''}">
+                                    <span class="player-name">${player.nickname || 'Unknown'}</span>
+                                    <span class="player-status">${state.readyPlayers.has(player.id) ? '✓ Ready' : 'Not Ready'}</span>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
                 </div>
             </div>
         `;
 
         // Add event listeners
-        document.getElementById('joinBtn').addEventListener('click', this.handleJoinGame.bind(this));
-        document.getElementById('readyBtn').addEventListener('click', this.handleReadyToggle.bind(this));
-        
-        // Initialize player list
-        this.updatePlayerList();
+        if (!this.isJoined) {
+            const joinBtn = document.getElementById('joinBtn');
+            const nicknameInput = document.getElementById('nickname');
+            
+            nicknameInput.addEventListener('input', () => {
+                joinBtn.disabled = nicknameInput.value.trim().length === 0;
+            });
+            
+            joinBtn.addEventListener('click', () => this.handleJoinGame());
+            nicknameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !joinBtn.disabled) {
+                    this.handleJoinGame();
+                }
+            });
+        }
+
+        const readyBtn = document.getElementById('readyBtn');
+        readyBtn.addEventListener('click', () => this.handleReadyToggle());
     }
 
     destroy() {

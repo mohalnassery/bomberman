@@ -78,32 +78,43 @@ class WebSocketService {
     }
 
     handleMessage(data) {
-        const { type, payload } = data;
-        const handlers = this.handlers.get(type);
-        
+        console.log('WebSocket received message:', data);
+        if (!data.type) {
+            console.error('Invalid message format:', data);
+            return;
+        }
+
+        const handlers = this.handlers.get(data.type);
         if (handlers) {
             handlers.forEach(handler => {
                 try {
-                    handler(payload);
+                    handler(data.payload || {});
                 } catch (error) {
-                    console.error(`Error in handler for ${type}:`, error);
+                    console.error(`Error in handler for ${data.type}:`, error);
                 }
             });
+        } else {
+            console.log('No handlers for message type:', data.type);
         }
     }
 
     send(type, data) {
         if (!this.connected) {
-            console.log('Not connected, queueing message:', type);
+            console.log('Not connected, queueing message:', type, data);
             this.pendingMessages.push({ type, data });
             return;
         }
 
+        const message = {
+            type,
+            payload: data
+        };
+        
         try {
-            const message = JSON.stringify({ type, payload: data });
-            this.socket.send(message);
+            console.log('Sending WebSocket message:', message);
+            this.socket.send(JSON.stringify(message));
         } catch (error) {
-            console.error('Error sending message:', error);
+            console.error('Error sending message:', error, message);
             throw error;
         }
     }

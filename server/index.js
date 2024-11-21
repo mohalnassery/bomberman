@@ -48,6 +48,7 @@ class GameServer {
         ws.on('message', (message) => {
             try {
                 const data = JSON.parse(message);
+                console.log('Received message:', data);
                 this.handleMessage(ws, data);
             } catch (error) {
                 console.error('Error parsing message:', error);
@@ -60,38 +61,56 @@ class GameServer {
     }
 
     handleMessage(ws, data) {
-        switch (data.type) {
+        const { type, payload } = data;
+        console.log('Handling message:', type, payload);
+
+        switch (type) {
             case 'join':
-                this.handlePlayerJoin(ws, data);
+                this.handlePlayerJoin(ws, payload);
                 break;
             case 'ready':
-                this.handlePlayerReady(ws, data);
+                this.handlePlayerReady(ws, payload);
                 break;
             case 'unready':
-                this.handlePlayerUnready(ws, data);
+                this.handlePlayerUnready(ws, payload);
                 break;
             case 'move':
-                this.handlePlayerMove(ws, data);
+                this.handlePlayerMove(ws, payload);
                 break;
             case 'bomb':
-                this.handleBombPlacement(ws, data);
+                this.handleBombPlacement(ws, payload);
                 break;
             case 'chat':
                 this.broadcastMessage({
                     type: 'chat',
                     payload: {
-                        message: data.message,
+                        message: payload.message,
                         player: this.players.get(ws)?.nickname
                     }
                 });
                 break;
             default:
-                console.warn('Unknown message type:', data.type);
+                console.warn('Unknown message type:', type);
         }
     }
 
     handlePlayerJoin(ws, data) {
+        console.log('Processing join request:', data);
         const { nickname, sessionId } = data;
+        
+        // Validate data
+        if (!nickname || !sessionId) {
+            console.error('Invalid join data:', data);
+            ws.send(JSON.stringify({ 
+                type: 'error', 
+                payload: { 
+                    message: 'Invalid join request: missing nickname or sessionId' 
+                }
+            }));
+            return;
+        }
+
+        // Check max players
         if (this.gameState.players.length >= 4) {
             ws.send(JSON.stringify({ 
                 type: 'error', 
@@ -102,6 +121,18 @@ class GameServer {
             return;
         }
 
+        // Check for duplicate nicknames
+        if (this.gameState.players.some(p => p.nickname === nickname)) {
+            ws.send(JSON.stringify({ 
+                type: 'error', 
+                payload: { 
+                    message: 'Nickname already taken' 
+                }
+            }));
+            return;
+        }
+
+        console.log('Creating new player:', nickname, sessionId);
         const player = {
             id: sessionId,
             nickname,
@@ -117,6 +148,8 @@ class GameServer {
 
         this.players.set(ws, player);
         this.gameState.players.push(player);
+
+        console.log('Current players:', this.gameState.players);
 
         // Send current game state to the new player
         ws.send(JSON.stringify({
