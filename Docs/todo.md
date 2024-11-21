@@ -1,5 +1,3 @@
-
-
 ## Comprehensive To-Do List
 
 ### Main Task: Finalize the Lobby Functionality
@@ -272,3 +270,60 @@
 ---
 
 By following this comprehensive to-do list, you'll be able to systematically complete your **Bomberman DOM** game project. Remember to commit your changes frequently and test each feature thoroughly before moving on to the next. Good luck with your project, and feel free to ask if you need further assistance on any specific task!
+
+# Bomberman DOM Todo List
+
+## Completed Features 
+- Basic game components setup (Player, Bomb, Map, PowerUp)
+- Core functionality implementation (DOM handling, Events, Router, State management)
+- Lobby system implementation
+- Chat functionality
+- Basic game loop implementation
+
+## In Progress 
+- [ ] Game mechanics refinement
+  - [ ] Collision detection optimization
+  - [ ] Power-up effects implementation
+  - [ ] Bomb chain reaction mechanics
+
+## Pending Features 
+### Gameplay
+- [ ] Multiple game modes
+  - [ ] Single player vs AI
+  - [ ] Local multiplayer
+  - [ ] Online multiplayer
+- [ ] Score system implementation
+- [ ] Player statistics tracking
+- [ ] Achievement system
+
+### UI/UX
+- [ ] Responsive design improvements
+- [ ] Game settings menu
+- [ ] Sound effects and background music
+- [ ] Visual effects for explosions and power-ups
+- [ ] Player customization options
+
+### Technical
+- [ ] Performance optimization
+- [ ] Network code optimization for multiplayer
+- [ ] Save game state functionality
+- [ ] Cross-browser compatibility testing
+- [ ] Unit tests implementation
+- [ ] Integration tests setup
+
+### Documentation
+- [ ] API documentation
+- [ ] User guide
+- [ ] Developer documentation
+- [ ] Setup instructions
+- [ ] Contributing guidelines
+
+## Known Issues 
+- [ ] List and track any bugs here
+
+## Future Enhancements 
+- [ ] Mobile support
+- [ ] Gamepad support
+- [ ] Custom map editor
+- [ ] Social features (friends list, rankings)
+- [ ] Replay system
