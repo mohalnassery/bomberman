@@ -5,11 +5,11 @@ import webSocket from '../core/websocket.js';
 import { PowerUp } from './PowerUp.js';
 
 export class Player {
-    constructor(id, name, position, map) {
+    constructor(id, name, position, gameMap) {
         this.id = id;
         this.name = name;
         this.position = position;
-        this.map = map;
+        this.gameMap = gameMap;
         this.lives = 3;
         this.speed = 1;
         this.maxBombs = 1;
@@ -38,14 +38,14 @@ export class Player {
     }
 
     setPosition(position) {
-        const oldCell = this.map.grid[Math.floor(this.position.y)][Math.floor(this.position.x)];
+        const oldCell = this.gameMap.grid[Math.floor(this.position.y)][Math.floor(this.position.x)];
         if (oldCell) {
             oldCell.hasPlayer = false;
         }
 
         this.position = position;
         
-        const newCell = this.map.grid[Math.floor(position.y)][Math.floor(position.x)];
+        const newCell = this.gameMap.grid[Math.floor(position.y)][Math.floor(position.x)];
         if (newCell) {
             newCell.hasPlayer = true;
         }
@@ -57,17 +57,17 @@ export class Player {
         const gridY = Math.floor(newY);
 
         // Check map boundaries
-        if (gridX < 0 || gridX >= this.map.width || gridY < 0 || gridY >= this.map.height) {
+        if (gridX < 0 || gridX >= this.gameMap.width || gridY < 0 || gridY >= this.gameMap.height) {
             return true;
         }
 
         // Get cells that the player's hitbox would occupy
         const cellsToCheck = [
-            this.map.grid[gridY][gridX], // Target cell
+            this.gameMap.grid[gridY][gridX], // Target cell
             // Check adjacent cells if player is between grid lines
-            this.map.grid[Math.ceil(newY)][gridX],
-            this.map.grid[gridY][Math.ceil(newX)],
-            this.map.grid[Math.ceil(newY)][Math.ceil(newX)]
+            this.gameMap.grid[Math.ceil(newY)][gridX],
+            this.gameMap.grid[gridY][Math.ceil(newX)],
+            this.gameMap.grid[Math.ceil(newY)][Math.ceil(newX)]
         ].filter(Boolean); // Remove undefined cells
 
         // Check for collisions with walls, blocks, or other players
@@ -115,7 +115,7 @@ export class Player {
     }
 
     checkPowerUps() {
-        const currentCell = this.map.grid[Math.floor(this.position.y)][Math.floor(this.position.x)];
+        const currentCell = this.gameMap.grid[Math.floor(this.position.y)][Math.floor(this.position.x)];
         if (currentCell.hasPowerUp && currentCell.powerUp) {
             currentCell.powerUp.collect(this);
         }
@@ -161,8 +161,8 @@ export class Player {
             const bombY = Math.round(this.position.y);
             
             // Check if there's already a bomb at this position
-            if (!this.map.grid[bombY][bombX].hasBomb) {
-                this.map.grid[bombY][bombX].hasBomb = true;
+            if (!this.gameMap.grid[bombY][bombX].hasBomb) {
+                this.gameMap.grid[bombY][bombX].hasBomb = true;
                 this.activeBombs++;
                 
                 // Create and store the bomb instance
@@ -170,9 +170,9 @@ export class Player {
                     { x: bombX, y: bombY },
                     this.flameRange,
                     this.id,
-                    this.map
+                    this.gameMap
                 );
-                this.map.grid[bombY][bombX].bomb = bomb;
+                this.gameMap.grid[bombY][bombX].bomb = bomb;
                 
                 webSocket.send('bomb', { 
                     position: { x: bombX, y: bombY },

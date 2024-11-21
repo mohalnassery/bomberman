@@ -1,6 +1,6 @@
 // src/components/Game.js
 import { Component } from '../core/component.js';
-import { Map } from './Map.js';
+import { GameMap } from './Map.js';
 import { Player } from './Player.js';
 import { Chat } from './Chat.js';
 import webSocket from '../core/websocket.js';
@@ -9,13 +9,14 @@ export class Game extends Component {
     constructor(props) {
         super(props);
         this.players = new Map();
-        this.map = new Map();
-        this.chat = new Chat();
+        this.gameMap = new GameMap();
+        this.chat = null;  // Initialize chat as null
         this.isRunning = false;
         this.isGameOver = false;
         this.winner = null;
         this.localPlayerId = null;
         this.spectatorMode = false;
+        this.lastFrameTime = 0;
         this.setupWebSocket();
     }
 
@@ -34,13 +35,29 @@ export class Game extends Component {
     async start() {
         try {
             await webSocket.connect();
-            this.map.generateMap();
-            this.chat.initialize();
+            this.gameMap.generateMap();
             this.isRunning = true;
             this.gameLoop();
         } catch (error) {
             console.error('Failed to start game:', error);
         }
+    }
+
+    gameLoop(currentTime = 0) {
+        if (!this.isRunning) return;
+
+        // Calculate delta time in seconds
+        const deltaTime = (currentTime - this.lastFrameTime) / 1000;
+        this.lastFrameTime = currentTime;
+
+        // Update game state
+        this.update(deltaTime);
+
+        // Render the game
+        this.render();
+
+        // Schedule next frame
+        requestAnimationFrame(this.gameLoop.bind(this));
     }
 
     handleInitialState(data) {
@@ -54,9 +71,15 @@ export class Game extends Component {
                     playerData.id,
                     playerData.nickname,
                     playerData.position,
-                    this.map
+                    this.gameMap
                 );
                 this.players.set(playerData.id, player);
+                
+                // Initialize chat with local player's nickname
+                if (playerData.id === playerId) {
+                    this.chat = new Chat(playerData.nickname);
+                    this.chat.initialize();
+                }
             }
         });
 
@@ -64,6 +87,47 @@ export class Game extends Component {
         if (gameState.spectatorMode) {
             this.enterSpectatorMode();
         }
+    }
+
+    handlePlayerJoin(data) {
+        const { id, nickname, position } = data;
+        if (!this.players.has(id)) {
+            const player = new Player(id, nickname, position, this.gameMap);
+            this.players.set(id, player);
+        }
+    }
+
+    handlePlayerLeave(data) {
+        const { playerId } = data;
+        if (this.players.has(playerId)) {
+            this.players.delete(playerId);
+        }
+    }
+
+    handlePlayerMove(data) {
+        const { playerId, position } = data;
+        const player = this.players.get(playerId);
+        if (player) {
+            player.setPosition(position);
+        }
+    }
+
+    handleBombPlaced(data) {
+        const { position, playerId, range } = data;
+        const player = this.players.get(playerId);
+        if (player) {
+            player.placeBomb(position, range);
+        }
+    }
+
+    handleBombExplode(data) {
+        const { position, affectedCells } = data;
+        // Handle bomb explosion effects
+        affectedCells.forEach(cell => {
+            if (this.gameMap.grid[cell.y][cell.x]) {
+                this.gameMap.grid[cell.y][cell.x].type = 'empty';
+            }
+        });
     }
 
     handlePlayerDeath(data) {
@@ -93,6 +157,11 @@ export class Game extends Component {
         this.showGameOverScreen();
     }
 
+    handleError(error) {
+        console.error('Game error:', error);
+        // Handle error appropriately (show message to user, etc.)
+    }
+
     enterSpectatorMode() {
         this.spectatorMode = true;
         // Enable free camera movement for spectating
@@ -114,13 +183,13 @@ export class Game extends Component {
                     camera.x = Math.max(camera.x - camera.speed, 0);
                     break;
                 case 'ArrowRight':
-                    camera.x = Math.min(camera.x + camera.speed, this.map.width * 40 - window.innerWidth);
+                    camera.x = Math.min(camera.x + camera.speed, this.gameMap.width * 40 - window.innerWidth);
                     break;
                 case 'ArrowUp':
                     camera.y = Math.max(camera.y - camera.speed, 0);
                     break;
                 case 'ArrowDown':
-                    camera.y = Math.min(camera.y + camera.speed, this.map.height * 40 - window.innerHeight);
+                    camera.y = Math.min(camera.y + camera.speed, this.gameMap.height * 40 - window.innerHeight);
                     break;
             }
 
@@ -185,14 +254,20 @@ export class Game extends Component {
         document.body.appendChild(overlay);
     }
 
-    update() {
+    update(deltaTime) {
         if (this.isGameOver) return;
 
-        // Update local player and send position to server
+        // Update all players
+        this.players.forEach(player => {
+            if (!player.isDead) {
+                player.update(deltaTime);
+            }
+        });
+
+        // Update local player position on server
         const localPlayer = this.players.get(this.localPlayerId);
         if (localPlayer && !localPlayer.isDead) {
             const oldPosition = { ...localPlayer.position };
-            localPlayer.update();
             
             // Only send update if position changed
             if (oldPosition.x !== localPlayer.position.x || 
@@ -200,20 +275,25 @@ export class Game extends Component {
                 webSocket.send('move', { position: localPlayer.position });
             }
         }
+
+        // Update game map (bombs, explosions, etc.)
+        this.gameMap.update(deltaTime);
     }
 
     render() {
-        // Clear previous render
+        // Clear the game container
         const root = document.getElementById('root');
+        if (!root) return;
+        
         root.innerHTML = '';
         
-        // Add game container with camera transform
+        // Create game container
         const gameContainer = document.createElement('div');
         gameContainer.className = 'game-container';
         root.appendChild(gameContainer);
         
         // Render map
-        this.map.render(gameContainer);
+        this.gameMap.render(gameContainer);
         
         // Render all players
         this.players.forEach(player => {
@@ -223,7 +303,9 @@ export class Game extends Component {
         });
         
         // Render chat
-        this.chat.render();
+        if (this.chat) {
+            this.chat.render();
+        }
         
         // Render spectator mode indicator
         if (this.spectatorMode) {
