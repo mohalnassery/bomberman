@@ -6,158 +6,190 @@ export class GameMap {
         this.grid = [];
         this.width = 15;
         this.height = 13;
-        this.players = new Map(); // Store player references
         this.currentLevel = 1;
-        this.activeBombs = new Map(); // Track active bombs
-        this.explosions = new Map(); // Track active explosions
-        this.playerStartPositions = [];
+        this.activeBombs = new Map();
+        this.explosions = new Map();
+        this.blocks = new Set();
+        this.powerUps = new Map();
     }
 
     async loadLevel(levelNumber) {
         try {
-            // Validate level number
-            if (!Number.isInteger(levelNumber) || levelNumber < 1) {
-                throw new Error('Invalid level number');
-            }
-            
-            // Use relative path and handle errors
-            const response = await fetch(`../levels/L${levelNumber}.TXT`);
+            const response = await fetch(`/levels/level${levelNumber}.json`);
             if (!response.ok) {
                 throw new Error(`Failed to load level ${levelNumber}`);
             }
             
-            const mapData = await response.text();
-            this.parseMapData(mapData);
+            const levelData = await response.json();
+            this.parseLevel(levelData);
             this.currentLevel = levelNumber;
         } catch (error) {
             console.error('Error loading level:', error);
-            this.generateMap(); // Fallback to random map
+            this.generateDefaultMap();
         }
     }
 
-    parseMapData(mapData) {
-        const rows = mapData.trim().split('\n');
-        
-        // Validate map dimensions
-        if (rows.length !== this.height) {
-            throw new Error(`Invalid map height: ${rows.length}, expected ${this.height}`);
-        }
-        
+    parseLevel(levelData) {
         this.grid = [];
-        this.playerStartPositions = [];
+        this.blocks.clear();
+        this.powerUps.clear();
         
-        for (let y = 0; y < rows.length; y++) {
-            const cells = rows[y].trim().split('');
-            
-            // Validate row width
-            if (cells.length !== this.width) {
-                throw new Error(`Invalid map width at row ${y}: ${cells.length}, expected ${this.width}`);
-            }
-            
+        // Initialize empty grid
+        for (let y = 0; y < this.height; y++) {
             this.grid[y] = [];
-            
-            for (let x = 0; x < cells.length; x++) {
-                const char = cells[x];
-                let cellType = 'empty';
-                
-                switch (char) {
-                    case '*':
-                        cellType = 'wall';
-                        break;
-                    case '-':
-                        cellType = 'block';
-                        break;
-                    case '1':
-                    case '2':
-                    case '3':
-                    case '4':
-                        cellType = 'empty';
-                        this.playerStartPositions.push({
-                            id: parseInt(char),
-                            position: { x, y }
-                        });
-                        break;
-                    case 'P':
-                        cellType = 'powerup';
-                        break;
-                    case ' ':
-                        cellType = 'empty';
-                        break;
-                    default:
-                        throw new Error(`Invalid map character at (${x}, ${y}): ${char}`);
-                }
-                
+            for (let x = 0; x < this.width; x++) {
                 this.grid[y][x] = {
-                    type: cellType,
-                    hasPlayer: false,
-                    hasBomb: false,
-                    powerUpType: cellType === 'powerup' ? this.getRandomPowerUpType() : null
+                    type: 'empty',
+                    powerUp: null,
+                    bomb: null,
+                    explosion: null
                 };
             }
         }
-    }
-    
-    getRandomPowerUpType() {
-        const types = ['bomb', 'flame', 'speed'];
-        return types[Math.floor(Math.random() * types.length)];
-    }
-    
-    addPowerUp(x, y, type) {
-        if (this.grid[y][x] && this.grid[y][x].type === 'empty') {
-            this.grid[y][x].type = 'powerup';
-            this.grid[y][x].powerUpType = type;
-        }
-    }
-
-    getPlayerStartPosition(playerNumber) {
+        
+        // Place walls (border)
         for (let y = 0; y < this.height; y++) {
             for (let x = 0; x < this.width; x++) {
-                if (this.grid[y][x].playerStart === String(playerNumber)) {
-                    return { x, y };
-                }
-            }
-        }
-        return null;
-    }
-
-    generateMap() {
-        // Fallback random map generation
-        for (let y = 0; y < this.height; y++) {
-            this.grid[y] = [];
-            for (let x = 0; x < this.width; x++) {
-                let cellType = 'empty';
-
                 if (y === 0 || y === this.height - 1 || x === 0 || x === this.width - 1) {
-                    cellType = 'wall';
-                } else if (y % 2 === 0 && x % 2 === 0) {
-                    cellType = 'wall';
-                } else if (Math.random() < 0.7) {
-                    cellType = 'block';
+                    this.grid[y][x].type = 'wall';
                 }
+            }
+        }
+        
+        // Place blocks and power-ups from level data
+        levelData.blocks.forEach(block => {
+            const { x, y, type } = block;
+            if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+                this.grid[y][x].type = type;
+                if (type === 'block') {
+                    this.blocks.add(`${x},${y}`);
+                }
+            }
+        });
+        
+        levelData.powerUps.forEach(powerUp => {
+            const { x, y, type } = powerUp;
+            if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+                this.addPowerUp(x, y, type);
+            }
+        });
+    }
 
+    generateDefaultMap() {
+        this.grid = [];
+        this.blocks.clear();
+        this.powerUps.clear();
+        
+        // Initialize empty grid with walls
+        for (let y = 0; y < this.height; y++) {
+            this.grid[y] = [];
+            for (let x = 0; x < this.width; x++) {
+                const isWall = y === 0 || y === this.height - 1 || 
+                             x === 0 || x === this.width - 1 || 
+                             (x % 2 === 0 && y % 2 === 0);
+                             
                 this.grid[y][x] = {
-                    type: cellType,
-                    hasPlayer: false,
-                    hasBomb: false,
-                    hasPowerUp: false,
-                    hasExplosion: false
+                    type: isWall ? 'wall' : 'empty',
+                    powerUp: null,
+                    bomb: null,
+                    explosion: null
                 };
             }
         }
-
-        // Clear starting positions
-        const startingPositions = [
-            { x: 1, y: 1 },
-            { x: this.width - 2, y: 1 },
-            { x: 1, y: this.height - 2 },
-            { x: this.width - 2, y: this.height - 2 }
+        
+        // Add random blocks (avoiding player spawn points)
+        const spawnPoints = [
+            { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 2 },
+            { x: this.width - 2, y: 1 }, { x: this.width - 3, y: 1 }, { x: this.width - 2, y: 2 },
+            { x: 1, y: this.height - 2 }, { x: 2, y: this.height - 2 }, { x: 1, y: this.height - 3 },
+            { x: this.width - 2, y: this.height - 2 }, { x: this.width - 3, y: this.height - 2 }, { x: this.width - 2, y: this.height - 3 }
         ];
+        
+        for (let y = 1; y < this.height - 1; y++) {
+            for (let x = 1; x < this.width - 1; x++) {
+                if (this.grid[y][x].type === 'empty' && 
+                    !spawnPoints.some(p => p.x === x && p.y === y) &&
+                    Math.random() < 0.7) {
+                    this.grid[y][x].type = 'block';
+                    this.blocks.add(`${x},${y}`);
+                }
+            }
+        }
+    }
 
-        startingPositions.forEach(pos => {
-            this.grid[pos.y][pos.x].type = 'empty';
-            this.grid[pos.y][pos.x + 1].type = 'empty';
-            this.grid[pos.y + 1][pos.x].type = 'empty';
-        });
+    clearBombs() {
+        this.activeBombs.clear();
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                if (this.grid[y][x].bomb) {
+                    this.grid[y][x].bomb = null;
+                }
+            }
+        }
+    }
+
+    clearPowerUps() {
+        this.powerUps.clear();
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                if (this.grid[y][x].powerUp) {
+                    this.grid[y][x].powerUp = null;
+                }
+            }
+        }
+    }
+
+    updateBlocks(blocks) {
+        this.blocks = new Set(blocks);
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                const key = `${x},${y}`;
+                if (this.grid[y][x].type === 'block' && !this.blocks.has(key)) {
+                    this.grid[y][x].type = 'empty';
+                } else if (this.grid[y][x].type === 'empty' && this.blocks.has(key)) {
+                    this.grid[y][x].type = 'block';
+                }
+            }
+        }
+    }
+
+    addPowerUp(x, y, type) {
+        if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+            const key = `${x},${y}`;
+            this.powerUps.set(key, { type, position: { x, y } });
+            this.grid[y][x].powerUp = { type };
+        }
+    }
+
+    placeBomb(x, y, range, playerId) {
+        if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+            const bombId = `${playerId}-${Date.now()}`;
+            this.activeBombs.set(bombId, {
+                position: { x, y },
+                range,
+                playerId
+            });
+            this.grid[y][x].bomb = {
+                id: bombId,
+                range,
+                playerId
+            };
+        }
+    }
+
+    hasBomb(x, y) {
+        return x >= 0 && x < this.width && y >= 0 && y < this.height && 
+               this.grid[y][x].bomb !== null;
+    }
+
+    explodeBomb(x, y) {
+        if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+            const bomb = this.grid[y][x].bomb;
+            if (bomb) {
+                this.activeBombs.delete(bomb.id);
+                this.grid[y][x].bomb = null;
+            }
+        }
     }
 
     render() {

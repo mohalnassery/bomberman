@@ -50,7 +50,7 @@ class WebSocketService {
                 this.socket.addEventListener('close', () => {
                     this.connected = false;
                     console.log('Disconnected from server');
-                    this.handleDisconnect();
+                    this.reconnect();
                 });
 
                 this.socket.addEventListener('error', (error) => {
@@ -64,58 +64,38 @@ class WebSocketService {
         });
     }
 
-    handleDisconnect() {
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-            
-            setTimeout(() => {
-                this.connect().catch(error => {
-                    console.error('Reconnection failed:', error);
-                });
-            }, this.reconnectDelay * this.reconnectAttempts);
-        }
-    }
-
     handleMessage(data) {
-        console.log('WebSocket received message:', data);
-        if (!data.type) {
+        const { type, payload } = data;
+        if (!type) {
             console.error('Invalid message format:', data);
             return;
         }
 
-        const handlers = this.handlers.get(data.type);
+        const handlers = this.handlers.get(type);
         if (handlers) {
             handlers.forEach(handler => {
                 try {
-                    handler(data.payload || {});
+                    handler(payload);
                 } catch (error) {
-                    console.error(`Error in handler for ${data.type}:`, error);
+                    console.error(`Error in handler for ${type}:`, error);
                 }
             });
-        } else {
-            console.log('No handlers for message type:', data.type);
         }
     }
 
-    send(type, data) {
-        if (!this.connected) {
-            console.log('Not connected, queueing message:', type, data);
+    send(type, data = {}) {
+        if (!this.socket || !this.connected) {
+            console.warn('Socket not connected, queueing message:', { type, data });
             this.pendingMessages.push({ type, data });
             return;
         }
 
-        const message = {
-            type,
-            payload: data
-        };
-        
         try {
-            console.log('Sending WebSocket message:', message);
-            this.socket.send(JSON.stringify(message));
+            const message = JSON.stringify({ type, payload: data });
+            this.socket.send(message);
         } catch (error) {
-            console.error('Error sending message:', error, message);
-            throw error;
+            console.error('Error sending message:', error);
+            this.pendingMessages.push({ type, data });
         }
     }
 
@@ -127,10 +107,28 @@ class WebSocketService {
     }
 
     off(type, handler) {
-        if (handler && this.handlers.has(type)) {
+        if (this.handlers.has(type)) {
             this.handlers.get(type).delete(handler);
-        } else if (!handler) {
-            this.handlers.delete(type);
+        }
+    }
+
+    reconnect() {
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.error('Max reconnection attempts reached');
+            return;
+        }
+
+        this.reconnectAttempts++;
+        setTimeout(() => {
+            this.connect().catch(() => this.reconnect());
+        }, this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1));
+    }
+
+    disconnect() {
+        if (this.socket) {
+            this.socket.close();
+            this.socket = null;
+            this.connected = false;
         }
     }
 

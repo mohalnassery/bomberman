@@ -16,13 +16,20 @@ export class App extends Component {
     }
 
     cleanup() {
-        if (this.currentComponent && typeof this.currentComponent.destroy === 'function') {
-            this.currentComponent.destroy();
+        if (this.currentComponent) {
+            if (typeof this.currentComponent.destroy === 'function') {
+                this.currentComponent.destroy();
+            }
+            this.currentComponent = null;
         }
     }
 
     showLobby() {
         this.cleanup();
+        
+        // Clear any existing game data
+        localStorage.removeItem('playerInfo');
+        
         const lobby = new Lobby();
         this.currentComponent = lobby;
         lobby.render();
@@ -30,17 +37,26 @@ export class App extends Component {
 
     async showGame() {
         this.cleanup();
+        
         try {
             const playerInfo = JSON.parse(localStorage.getItem('playerInfo'));
-            if (!playerInfo || !playerInfo.nickname) {
-                throw new Error('No player information found');
+            const playerSession = JSON.parse(localStorage.getItem('playerSession'));
+            
+            if (!playerInfo || !playerSession || !playerInfo.playerId) {
+                throw new Error('Missing player information');
             }
 
-            const game = new Game({ playerInfo });
+            const game = new Game({ 
+                playerInfo,
+                gameState: playerSession.gameState
+            });
+            
             this.currentComponent = game;
             await game.start();
         } catch (error) {
             console.error('Failed to start game:', error);
+            localStorage.removeItem('playerInfo');
+            localStorage.removeItem('playerSession');
             window.location.hash = '/';
         }
     }
@@ -48,12 +64,7 @@ export class App extends Component {
     showNotFound() {
         this.cleanup();
         const root = document.getElementById('root');
-        root.innerHTML = `
-            <div class="not-found">
-                <h1>404 - Page Not Found</h1>
-                <a href="#/">Return to Lobby</a>
-            </div>
-        `;
+        root.innerHTML = '<h1>404 - Page Not Found</h1>';
     }
 
     render() {

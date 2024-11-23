@@ -1,4 +1,3 @@
-// src/components/Lobby.js
 import { Component } from '../core/component.js';
 import { Store } from '../core/state.js';
 import webSocket from '../core/websocket.js';
@@ -6,6 +5,15 @@ import webSocket from '../core/websocket.js';
 export class Lobby extends Component {
     constructor(props) {
         super(props);
+        
+        // Check for existing session
+        const existingSession = JSON.parse(localStorage.getItem('playerSession'));
+        if (existingSession) {
+            this.nickname = existingSession.nickname;
+            this.playerId = existingSession.playerId;
+            this.isJoined = true;
+        }
+        
         this.store = new Store({ 
             players: [], 
             playerCount: 0,
@@ -21,9 +29,14 @@ export class Lobby extends Component {
                 timeLimit: 180
             }
         });
-        this.nickname = '';
-        this.isJoined = false;
+        
+        this.mounted = false;
         this.setupWebSocket();
+        
+        // If we have an existing session, reconnect
+        if (existingSession) {
+            this.reconnect();
+        }
     }
 
     setupWebSocket() {
@@ -35,36 +48,55 @@ export class Lobby extends Component {
         webSocket.on('gameState', this.handleGameState.bind(this));
         webSocket.on('levelVoted', this.handleLevelVoted.bind(this));
         webSocket.on('levelSelected', this.handleLevelSelected.bind(this));
+        webSocket.on('syncPlayers', this.handleSyncPlayers.bind(this));
+        webSocket.on('connect_error', () => {
+            localStorage.removeItem('playerSession');
+            localStorage.removeItem('playerInfo');
+            window.location.reload();
+        });
+        
+        webSocket.on('disconnect', () => {
+            if (this.mounted) {
+                alert('Disconnected from server. Please refresh the page.');
+                localStorage.removeItem('playerSession');
+                localStorage.removeItem('playerInfo');
+                window.location.reload();
+            }
+        });
     }
 
     handlePlayerJoined(data) {
-        console.log('Player joined data:', data);
         const state = this.store.getState();
+        const newPlayer = data.player;
         
-        // Update players array if player doesn't exist
-        if (!state.players.find(p => p.id === data.player.id)) {
-            state.players.push(data.player);
-            state.playerCount = state.players.length;
+        // Don't add if player already exists
+        if (!state.players.find(p => p.id === newPlayer.id)) {
+            const newPlayers = [...state.players, newPlayer];
+            this.store.setState({
+                players: newPlayers,
+                playerCount: newPlayers.length
+            });
         }
         
-        this.store.setState(state);
+        // Request full state sync after join
+        webSocket.send('requestSync', {
+            playerId: this.playerId
+        });
+        
         this.updatePlayerList();
     }
 
     handlePlayerLeft(data) {
         const state = this.store.getState();
         const { playerId } = data;
-        const index = state.players.findIndex(p => p.id === playerId);
-        if (index !== -1) {
-            state.players.splice(index, 1);
-            state.readyPlayers.delete(playerId);
-            this.store.setState({
-                players: state.players,
-                playerCount: state.players.length,
-                readyPlayers: state.readyPlayers
-            });
-            this.updatePlayerList();
-        }
+        const newPlayers = state.players.filter(p => p.id !== playerId);
+        
+        this.store.setState({
+            players: newPlayers,
+            playerCount: newPlayers.length,
+            readyPlayers: new Set([...state.readyPlayers].filter(id => id !== playerId))
+        });
+        this.render(); // Force a re-render when a player leaves
     }
 
     handlePlayerReady(data) {
@@ -92,17 +124,49 @@ export class Lobby extends Component {
         console.log('Game state received:', data);
         const currentState = this.store.getState();
         
-        // Update the store with new state while preserving existing properties
+        if (data.gameStatus === 'running') {
+            const currentPlayer = data.players.find(p => p.id === this.playerId);
+            if (currentPlayer) {
+                // Save complete game state
+                const playerInfo = {
+                    playerId: this.playerId,
+                    nickname: currentPlayer.nickname,
+                    selectedLevel: data.selectedLevel || currentState.gameSettings.startLevel,
+                    settings: currentState.gameSettings,
+                    ready: true,
+                    gameStatus: 'running'
+                };
+                
+                // Update session with game state
+                const session = JSON.parse(localStorage.getItem('playerSession'));
+                if (session) {
+                    session.currentPage = '#/game';
+                    session.gameState = {
+                        selectedLevel: data.selectedLevel,
+                        players: data.players,
+                        readyPlayers: data.readyPlayers,
+                        gameStatus: data.gameStatus
+                    };
+                    localStorage.setItem('playerSession', JSON.stringify(session));
+                }
+                
+                localStorage.setItem('playerInfo', JSON.stringify(playerInfo));
+                this.startGame();
+                return;
+            }
+        }
+        
+        // Otherwise update lobby state
         this.store.setState({
             ...currentState,
             players: data.players || currentState.players,
             playerCount: data.players ? data.players.length : currentState.playerCount,
             readyPlayers: new Set(data.readyPlayers || []),
             levelVotes: data.levelVotes || {},
-            selectedLevel: data.selectedLevel
+            selectedLevel: data.selectedLevel,
+            gameStatus: data.gameStatus
         });
 
-        // Update UI
         this.updatePlayerList();
         this.updateLevelVotes();
     }
@@ -181,47 +245,77 @@ export class Lobby extends Component {
         const nicknameInput = document.getElementById('nickname');
         this.nickname = nicknameInput.value.trim();
 
-        // Validate nickname
-        if (this.nickname.length === 0) {
+        if (!this.nickname) {
             alert('Please enter a nickname.');
             return;
         }
 
         try {
-            // Connect to WebSocket if not connected
             if (!webSocket.connected) {
                 await webSocket.connect();
             }
 
-            const sessionId = this.generateSessionId();
-            console.log('Joining with nickname:', this.nickname, 'sessionId:', sessionId);
+            this.playerId = this.generateSessionId();
             
-            // Send join request
+            // Save session and player info
+            const playerInfo = {
+                playerId: this.playerId,
+                nickname: this.nickname,
+                ready: false,
+                gameStatus: 'lobby'
+            };
+            
+            localStorage.setItem('playerInfo', JSON.stringify(playerInfo));
+            localStorage.setItem('playerSession', JSON.stringify({
+                nickname: this.nickname,
+                playerId: this.playerId,
+                currentPage: '#/lobby',
+                timestamp: Date.now()
+            }));
+
             webSocket.send('join', {
                 nickname: this.nickname,
-                sessionId: sessionId
+                sessionId: this.playerId
             });
 
             this.isJoined = true;
             nicknameInput.disabled = true;
-            document.getElementById('joinBtn').disabled = true;
-
-            // Enable all level buttons
-            const levelButtons = document.querySelectorAll('.level-btn');
-            levelButtons.forEach(button => {
-                button.disabled = false;
+            
+            const state = this.store.getState();
+            this.store.setState({
+                ...state,
+                players: [...state.players, {
+                    id: this.playerId,
+                    nickname: this.nickname,
+                    ready: false
+                }]
             });
 
-            // Keep ready button disabled until vote
-            document.getElementById('readyBtn').disabled = true;
+            this.render();
         } catch (error) {
             console.error('Failed to join game:', error);
             alert('Failed to join game. Please try again.');
         }
     }
 
-    generateSessionId() {
-        return Math.random().toString(36).substring(2) + Date.now().toString(36);
+    handleVoteLevel(level) {
+        if (!this.isJoined) return;
+
+        // Update local state first for immediate feedback
+        const state = this.store.getState();
+        state.levelVotes[this.nickname] = level;
+        this.store.setState(state);
+
+        // Send vote to server
+        webSocket.send('voteLevel', { 
+            level,
+            nickname: this.nickname,
+            playerId: this.playerId // Add player ID to vote
+        });
+        
+        // Update UI
+        this.updateLevelVotes();
+        this.render(); // Force a re-render after voting
     }
 
     handleReadyToggle() {
@@ -252,24 +346,6 @@ export class Lobby extends Component {
         }
     }
 
-    handleVoteLevel(level) {
-        if (!this.isJoined) return;
-
-        // Update local state first for immediate feedback
-        const state = this.store.getState();
-        state.levelVotes[this.nickname] = level;
-        this.store.setState(state);
-
-        // Send vote to server
-        webSocket.send('voteLevel', { 
-            level,
-            nickname: this.nickname
-        });
-        
-        // Update UI
-        this.updateLevelVotes();
-    }
-
     startCountdown(seconds) {
         const state = this.store.getState();
         if (state.gameStarting) return;
@@ -292,12 +368,39 @@ export class Lobby extends Component {
 
     startGame() {
         const state = this.store.getState();
-        // Save player info and game settings
-        localStorage.setItem('playerInfo', JSON.stringify({
+        
+        // Don't proceed if player info is missing
+        if (!this.playerId || !this.nickname) {
+            console.error('Missing player information');
+            return;
+        }
+
+        // Save complete game state before transition
+        const playerInfo = {
+            playerId: this.playerId,
             nickname: this.nickname,
-            sessionId: this.generateSessionId(),
-            settings: state.gameSettings
-        }));
+            selectedLevel: state.selectedLevel || state.gameSettings.startLevel,
+            settings: state.gameSettings,
+            ready: true,
+            gameStatus: 'running'
+        };
+        
+        localStorage.setItem('playerInfo', JSON.stringify(playerInfo));
+        
+        // Update session with current game state
+        const session = JSON.parse(localStorage.getItem('playerSession'));
+        if (session) {
+            session.currentPage = '#/game';
+            session.gameState = {
+                selectedLevel: state.selectedLevel,
+                players: state.players,
+                readyPlayers: Array.from(state.readyPlayers),
+                gameStatus: 'running'
+            };
+            localStorage.setItem('playerSession', JSON.stringify(session));
+        }
+
+        // Clean up and transition
         window.location.hash = '#/game';
     }
 
@@ -392,5 +495,73 @@ export class Lobby extends Component {
         
         // Remove global handler
         delete window.handleVoteLevel;
+        
+        const session = JSON.parse(localStorage.getItem('playerSession'));
+        if (window.location.hash !== '#/game' || !session || session.currentPage !== '#/game') {
+            localStorage.removeItem('playerSession');
+            localStorage.removeItem('playerInfo');
+        }
+        
+        this.mounted = false;
+    }
+
+    generateSessionId() {
+        return Math.random().toString(36).substring(2) + Date.now().toString(36);
+    }
+
+    handleSyncPlayers(data) {
+        const { players, readyPlayers, levelVotes } = data;
+        
+        this.store.setState({
+            players: players,
+            playerCount: players.length,
+            readyPlayers: new Set(readyPlayers),
+            levelVotes: levelVotes
+        });
+        
+        this.updatePlayerList();
+        this.updateLevelVotes();
+    }
+
+    async reconnect() {
+        try {
+            if (!webSocket.connected) {
+                await webSocket.connect();
+            }
+            
+            // Send rejoin request and wait for response
+            const response = await new Promise((resolve, reject) => {
+                webSocket.send('rejoin', {
+                    nickname: this.nickname,
+                    playerId: this.playerId
+                });
+                
+                // Wait for response with timeout
+                const timeout = setTimeout(() => reject(new Error('Rejoin timeout')), 5000);
+                
+                webSocket.once('rejoinResponse', (data) => {
+                    clearTimeout(timeout);
+                    resolve(data);
+                });
+            });
+            
+            // If server doesn't recognize the session, clear it
+            if (!response.success) {
+                throw new Error('Session not found on server');
+            }
+            
+            // Update UI if successful
+            const nicknameInput = document.getElementById('nickname');
+            if (nicknameInput) {
+                nicknameInput.value = this.nickname;
+                nicknameInput.disabled = true;
+            }
+        } catch (error) {
+            console.error('Failed to reconnect:', error);
+            // Clear session and reload
+            localStorage.removeItem('playerSession');
+            localStorage.removeItem('playerInfo');
+            window.location.reload();
+        }
     }
 }

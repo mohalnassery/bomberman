@@ -9,6 +9,8 @@ export class Player {
         this.id = id;
         this.name = name;
         this.position = position;
+        this.serverPosition = { ...position }; // Server's last known position
+        this.targetPosition = { ...position };  // Position to interpolate towards
         this.gameMap = gameMap;
         this.lives = 3;
         this.speed = 1;
@@ -21,6 +23,10 @@ export class Player {
         this.bombsPlaced = 0;
         this.killCount = 0;
         this.powerUpsCollected = 0;
+        this.lastUpdateTime = Date.now();
+        this.lastServerUpdate = Date.now();
+        this.updateThrottleMs = 50; // Send updates every 50ms
+        this.interpolationFactor = 0.2; // Adjust for smoother movement
         this.boundKeyDown = this.handleKeyDown.bind(this);
         this.boundKeyUp = this.handleKeyUp.bind(this);
         this.initControls();
@@ -61,10 +67,10 @@ export class Player {
         }
     }
 
-    checkCollision(newX, newY) {
+    checkCollision() {
         // Convert position to grid coordinates
-        const gridX = Math.floor(newX);
-        const gridY = Math.floor(newY);
+        const gridX = Math.floor(this.position.x);
+        const gridY = Math.floor(this.position.y);
 
         // Check map boundaries
         if (gridX < 0 || gridX >= this.gameMap.width || gridY < 0 || gridY >= this.gameMap.height) {
@@ -75,9 +81,9 @@ export class Player {
         const cellsToCheck = [
             this.gameMap.grid[gridY][gridX], // Target cell
             // Check adjacent cells if player is between grid lines
-            this.gameMap.grid[Math.ceil(newY)][gridX],
-            this.gameMap.grid[gridY][Math.ceil(newX)],
-            this.gameMap.grid[Math.ceil(newY)][Math.ceil(newX)]
+            this.gameMap.grid[Math.ceil(this.position.y)][gridX],
+            this.gameMap.grid[gridY][Math.ceil(this.position.x)],
+            this.gameMap.grid[Math.ceil(this.position.y)][Math.ceil(this.position.x)]
         ].filter(Boolean); // Remove undefined cells
 
         // Check for collisions with walls, blocks, or other players
@@ -91,46 +97,111 @@ export class Player {
 
     update(deltaTime) {
         if (this.isDead) return;
+
+        const oldPosition = { ...this.position };
+        let moved = false;
+        const newPosition = { ...this.position };
+
+        // Calculate new position based on input
+        if (this.keysPressed['ArrowUp'] || this.keysPressed['w']) {
+            newPosition.y -= this.speed * deltaTime;
+            moved = true;
+        }
+        if (this.keysPressed['ArrowDown'] || this.keysPressed['s']) {
+            newPosition.y += this.speed * deltaTime;
+            moved = true;
+        }
+        if (this.keysPressed['ArrowLeft'] || this.keysPressed['a']) {
+            newPosition.x -= this.speed * deltaTime;
+            moved = true;
+        }
+        if (this.keysPressed['ArrowRight'] || this.keysPressed['d']) {
+            newPosition.x += this.speed * deltaTime;
+            moved = true;
+        }
+
+        // Test collision with new position
+        const originalPosition = { ...this.position };
+        this.position = newPosition;
         
-        let dx = 0;
-        let dy = 0;
+        if (this.checkCollision()) {
+            this.position = originalPosition;
+            moved = false;
+        }
+
+        // Interpolate towards server position when receiving updates
+        if (!moved) {
+            const dx = this.targetPosition.x - this.position.x;
+            const dy = this.targetPosition.y - this.position.y;
+            if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
+                this.position.x += dx * this.interpolationFactor;
+                this.position.y += dy * this.interpolationFactor;
+                moved = true;
+            }
+        }
+
+        // Send position updates to server with throttling
+        if (moved && Date.now() - this.lastServerUpdate >= this.updateThrottleMs) {
+            this.lastServerUpdate = Date.now();
+            webSocket.send('playerMove', {
+                id: this.id,
+                position: this.position,
+                timestamp: Date.now()
+            });
+        }
+
+        this.isMoving = moved;
+    }
+
+    // Method to handle server position updates
+    updateServerPosition(serverPos, timestamp) {
+        // Update target position for interpolation
+        this.targetPosition = { ...serverPos };
+        this.serverPosition = { ...serverPos };
         
-        if (this.keysPressed['ArrowLeft']) dx -= this.speed * deltaTime;
-        if (this.keysPressed['ArrowRight']) dx += this.speed * deltaTime;
-        if (this.keysPressed['ArrowUp']) dy -= this.speed * deltaTime;
-        if (this.keysPressed['ArrowDown']) dy += this.speed * deltaTime;
-        
-        if (dx !== 0 || dy !== 0) {
-            const newX = this.position.x + dx;
-            const newY = this.position.y + dy;
-            
-            // Check collision with grid boundaries
-            if (newX < 0 || newX >= this.gameMap.width || newY < 0 || newY >= this.gameMap.height) {
-                return;
-            }
-            
-            // Check collision with walls and blocks
-            const gridX = Math.floor(newX);
-            const gridY = Math.floor(newY);
-            const cell = this.gameMap.grid[gridY][gridX];
-            
-            if (cell.type === 'wall' || cell.type === 'block') {
-                return;
-            }
-            
-            // Check for power-ups
-            if (cell.type === 'powerup') {
-                this.collectPowerUp(cell.powerUpType);
-                cell.type = 'empty';
-                cell.powerUpType = null;
-            }
-            
-            // Update position
-            this.setPosition({ x: newX, y: newY });
+        // If the difference is too large, snap to the server position
+        const dx = this.targetPosition.x - this.position.x;
+        const dy = this.targetPosition.y - this.position.y;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+            this.position = { ...serverPos };
         }
     }
-    
-    collectPowerUp(type) {
+
+    placeBomb() {
+        if (this.activeBombs >= this.maxBombs || this.isDead) return;
+
+        const bombX = Math.floor(this.position.x);
+        const bombY = Math.floor(this.position.y);
+
+        // Check if there's already a bomb at this position
+        if (this.gameMap.hasBomb(bombX, bombY)) return;
+
+        this.activeBombs++;
+        webSocket.send('placeBomb', {
+            playerId: this.id,
+            position: { x: bombX, y: bombY },
+            range: this.flameRange,
+            timestamp: Date.now()
+        });
+    }
+
+    checkPowerUps() {
+        const currentCell = this.gameMap.grid[Math.floor(this.position.y)][Math.floor(this.position.x)];
+        if (currentCell && currentCell.type === 'powerup') {
+            const powerUp = currentCell.powerUp;
+            webSocket.send('collectPowerUp', {
+                playerId: this.id,
+                position: {
+                    x: Math.floor(this.position.x),
+                    y: Math.floor(this.position.y)
+                },
+                type: powerUp.type,
+                timestamp: Date.now()
+            });
+        }
+    }
+
+    handlePowerUp(type) {
         switch (type) {
             case 'bomb':
                 this.maxBombs++;
@@ -145,11 +216,19 @@ export class Player {
         this.powerUpsCollected++;
     }
 
-    checkPowerUps() {
-        const currentCell = this.gameMap.grid[Math.floor(this.position.y)][Math.floor(this.position.x)];
-        if (currentCell.hasPowerUp && currentCell.powerUp) {
-            currentCell.powerUp.collect(this);
+    collectPowerUp(type) {
+        switch (type) {
+            case 'bomb':
+                this.maxBombs++;
+                break;
+            case 'flame':
+                this.flameRange++;
+                break;
+            case 'speed':
+                this.speed += 0.2;
+                break;
         }
+        this.powerUpsCollected++;
     }
 
     applyPowerUp(powerUp) {
@@ -184,39 +263,6 @@ export class Player {
                 speed: this.speed
             }
         });
-    }
-
-    placeBomb() {
-        if (this.activeBombs < this.maxBombs && !this.isDead) {
-            const bombX = Math.round(this.position.x);
-            const bombY = Math.round(this.position.y);
-            
-            // Check if there's already a bomb at this position
-            if (!this.gameMap.grid[bombY][bombX].hasBomb) {
-                this.gameMap.grid[bombY][bombX].hasBomb = true;
-                this.activeBombs++;
-                
-                // Create and store the bomb instance
-                const bomb = new Bomb(
-                    { x: bombX, y: bombY },
-                    this.flameRange,
-                    this.id,
-                    this.gameMap
-                );
-                this.gameMap.grid[bombY][bombX].bomb = bomb;
-                
-                webSocket.send('bomb', { 
-                    position: { x: bombX, y: bombY },
-                    range: this.flameRange,
-                    playerId: this.id
-                });
-
-                // Restore bomb count after explosion
-                setTimeout(() => {
-                    this.activeBombs--;
-                }, 3000);
-            }
-        }
     }
 
     takeDamage() {
