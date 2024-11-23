@@ -174,16 +174,26 @@ export class Game extends Component {
                 throw new Error('Missing player information');
             }
 
-            // Initialize map with default level
-            const selectedLevel = localStorage.getItem('selectedLevel') || 1;
-            await this.gameMap.loadLevel(selectedLevel);
+            // Get the selected level from localStorage
+            const selectedLevel = playerInfo.selectedLevel || localStorage.getItem('selectedLevel') || '1';
+            console.log('Loading level:', selectedLevel);
+            
+            // Initialize map with selected level
+            try {
+                await this.gameMap.loadLevel(selectedLevel);
+            } catch (error) {
+                console.error('Failed to load selected level:', error);
+                console.warn('Falling back to default map');
+                this.gameMap.generateDefaultMap();
+            }
 
             await webSocket.connect();
             
             // Request initial game state from server
             webSocket.send('requestGameState', {
                 playerId: playerSession.playerId,
-                nickname: playerSession.nickname
+                nickname: playerSession.nickname,
+                selectedLevel: selectedLevel
             });
             
             // Wait for initial state before starting game loop

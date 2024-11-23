@@ -194,11 +194,45 @@ export class Lobby extends Component {
             voteCounts[level] = (voteCounts[level] || 0) + 1;
         });
 
+        // Find the highest vote count
+        let maxVotes = 0;
+        let levelsWithMaxVotes = [];
+        Object.entries(voteCounts).forEach(([level, votes]) => {
+            if (votes > maxVotes) {
+                maxVotes = votes;
+                levelsWithMaxVotes = [level];
+            } else if (votes === maxVotes) {
+                levelsWithMaxVotes.push(level);
+            }
+        });
+
+        // If there are votes, select a random level from those with max votes
+        if (levelsWithMaxVotes.length > 0) {
+            const selectedLevel = levelsWithMaxVotes[Math.floor(Math.random() * levelsWithMaxVotes.length)];
+            if (selectedLevel !== state.selectedLevel) {
+                state.selectedLevel = selectedLevel;
+                this.store.setState(state);
+                
+                // Store the selected level in localStorage
+                localStorage.setItem('selectedLevel', selectedLevel);
+            }
+        }
+
         // Update the vote count displays
         ['L1', 'L2', 'L3', 'L4', 'L5', 'L6'].forEach(level => {
             const voteCountElement = document.getElementById(`${level}-votes`);
             if (voteCountElement) {
                 voteCountElement.textContent = voteCounts[level] || 0;
+                
+                // Highlight the selected level
+                const levelElement = document.getElementById(level);
+                if (levelElement) {
+                    if (level === state.selectedLevel) {
+                        levelElement.classList.add('selected');
+                    } else {
+                        levelElement.classList.remove('selected');
+                    }
+                }
             }
         });
 
@@ -368,6 +402,10 @@ export class Lobby extends Component {
 
     startGame() {
         const state = this.store.getState();
+        const selectedLevel = state.selectedLevel || '1';  // Default to level 1 if no selection
+        
+        // Save the selected level to localStorage
+        localStorage.setItem('selectedLevel', selectedLevel);
         
         // Don't proceed if player info is missing
         if (!this.playerId || !this.nickname) {
@@ -379,7 +417,7 @@ export class Lobby extends Component {
         const playerInfo = {
             playerId: this.playerId,
             nickname: this.nickname,
-            selectedLevel: state.selectedLevel || state.gameSettings.startLevel,
+            selectedLevel: selectedLevel,
             settings: state.gameSettings,
             ready: true,
             gameStatus: 'running'
@@ -392,7 +430,7 @@ export class Lobby extends Component {
         if (session) {
             session.currentPage = '#/game';
             session.gameState = {
-                selectedLevel: state.selectedLevel,
+                selectedLevel: selectedLevel,
                 players: state.players,
                 readyPlayers: Array.from(state.readyPlayers),
                 gameStatus: 'running'
@@ -401,7 +439,7 @@ export class Lobby extends Component {
         }
 
         // Clean up and transition
-        window.location.hash = '#/game';
+        window.location.hash = '/game';
     }
 
     render() {

@@ -16,7 +16,11 @@ export class GameMap {
 
     async loadLevel(levelNumber) {
         try {
-            const levelPath = `src/levels/L${levelNumber}.TXT`;
+            // Remove 'L' prefix if present and ensure it's a string
+            const levelNum = String(levelNumber).replace(/^L/i, '');
+            const levelPath = `src/levels/L${levelNum}.TXT`;
+            console.log('Loading level from:', levelPath);
+            
             const response = await fetch(levelPath);
             
             if (!response.ok) {
@@ -25,8 +29,19 @@ export class GameMap {
             
             const levelText = await response.text();
             const levelData = this.parseLevelText(levelText);
+            
+            // Clear existing state
+            this.grid = [];
+            this.blocks.clear();
+            this.powerUps.clear();
+            this.activeBombs.clear();
+            this.explosions.clear();
+            
+            // Parse and apply the level data
             this.parseLevel(levelData);
-            this.currentLevel = levelNumber;
+            this.currentLevel = parseInt(levelNum);
+            console.log('Successfully loaded level:', this.currentLevel);
+            
         } catch (error) {
             console.error('Error loading level:', error);
             this.generateDefaultMap();
