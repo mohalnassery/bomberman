@@ -5,13 +5,26 @@ import webSocket from '../core/websocket.js';
 import { PowerUp } from './PowerUp.js';
 
 export class Player {
-    constructor(id, name, position, gameMap) {
-        this.id = id;
-        this.name = name;
-        this.position = position;
-        this.serverPosition = { ...position }; // Server's last known position
-        this.targetPosition = { ...position };  // Position to interpolate towards
-        this.gameMap = gameMap;
+    constructor(props) {
+        // Handle both object and individual parameters for backward compatibility
+        if (typeof props === 'object') {
+            this.id = props.id;
+            this.name = props.nickname;
+            this.position = props.position || { x: 0, y: 0 };
+            this.gameMap = props.gameMap;
+            this.isLocal = props.isLocal || false;
+        } else {
+            // Legacy constructor
+            const [id, name, position, gameMap] = arguments;
+            this.id = id;
+            this.name = name;
+            this.position = position;
+            this.gameMap = gameMap;
+            this.isLocal = false;
+        }
+
+        this.serverPosition = { ...this.position }; // Server's last known position
+        this.targetPosition = { ...this.position };  // Position to interpolate towards
         this.lives = 3;
         this.speed = 1;
         this.maxBombs = 1;
@@ -27,9 +40,12 @@ export class Player {
         this.lastServerUpdate = Date.now();
         this.updateThrottleMs = 50; // Send updates every 50ms
         this.interpolationFactor = 0.2; // Adjust for smoother movement
-        this.boundKeyDown = this.handleKeyDown.bind(this);
-        this.boundKeyUp = this.handleKeyUp.bind(this);
-        this.initControls();
+
+        if (this.isLocal) {
+            this.boundKeyDown = this.handleKeyDown.bind(this);
+            this.boundKeyUp = this.handleKeyUp.bind(this);
+            this.initControls();
+        }
     }
 
     initControls() {
@@ -351,8 +367,9 @@ export class Player {
 
     render(container) {
         // Remove previous player cell
-        const previousCells = document.querySelectorAll(`.cell.player-${this.id}`);
-        previousCells.forEach(cell => cell.classList.remove(`player-${this.id}`));
+        const playerId = typeof this.id === 'object' ? JSON.stringify(this.id) : this.id;
+        const previousCells = document.querySelectorAll(`.cell.player-${playerId}`);
+        previousCells.forEach(cell => cell.classList.remove(`player-${playerId}`));
 
         // Don't render if dead (unless in spectator mode)
         if (this.isDead) return;
@@ -360,7 +377,7 @@ export class Player {
         // Render player on the map
         const cell = $(`.cell[data-x="${Math.round(this.position.x)}"][data-y="${Math.round(this.position.y)}"]`);
         if (cell) {
-            cell.classList.add(`player-${this.id}`);
+            cell.classList.add(`player-${playerId}`);
             
             // Add player info
             const playerInfo = document.createElement('div');

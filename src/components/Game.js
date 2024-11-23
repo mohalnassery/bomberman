@@ -96,7 +96,9 @@ export class Game extends Component {
                 player = new Player({
                     id: playerData.id,
                     nickname: playerData.nickname,
-                    isLocal: playerData.id === this.localPlayerId
+                    isLocal: playerData.id === this.localPlayerId,
+                    gameMap: this.gameMap,
+                    position: playerData.position || { x: 0, y: 0 }
                 });
                 this.players.set(playerData.id, player);
             }

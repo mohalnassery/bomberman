@@ -11,6 +11,7 @@ export class GameMap {
         this.explosions = new Map();
         this.blocks = new Set();
         this.powerUps = new Map();
+        this.players = new Map();
     }
 
     async loadLevel(levelNumber) {
@@ -155,9 +156,17 @@ export class GameMap {
 
     clearPowerUps() {
         this.powerUps.clear();
+        if (!this.grid || !Array.isArray(this.grid)) {
+            console.warn('Grid not initialized in clearPowerUps');
+            return;
+        }
         for (let y = 0; y < this.height; y++) {
+            if (!this.grid[y]) {
+                console.warn(`Grid row ${y} not initialized in clearPowerUps`);
+                continue;
+            }
             for (let x = 0; x < this.width; x++) {
-                if (this.grid[y][x].powerUp) {
+                if (this.grid[y][x] && this.grid[y][x].powerUp) {
                     this.grid[y][x].powerUp = null;
                 }
             }
@@ -203,8 +212,10 @@ export class GameMap {
     }
 
     hasBomb(x, y) {
-        return x >= 0 && x < this.width && y >= 0 && y < this.height && 
-               this.grid[y][x].bomb !== null;
+        if (!this.grid || !Array.isArray(this.grid)) return false;
+        if (x < 0 || x >= this.width || y < 0 || y >= this.height) return false;
+        if (!this.grid[y] || !this.grid[y][x]) return false;
+        return this.grid[y][x].bomb !== null && this.grid[y][x].bomb !== undefined;
     }
 
     explodeBomb(x, y) {
