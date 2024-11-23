@@ -15,18 +15,59 @@ export class GameMap {
 
     async loadLevel(levelNumber) {
         try {
-            const response = await fetch(`/levels/level${levelNumber}.json`);
+            const levelPath = `src/levels/L${levelNumber}.TXT`;
+            const response = await fetch(levelPath);
+            
             if (!response.ok) {
-                throw new Error(`Failed to load level ${levelNumber}`);
+                throw new Error(`Failed to load level ${levelNumber}: ${response.statusText}`);
             }
             
-            const levelData = await response.json();
+            const levelText = await response.text();
+            const levelData = this.parseLevelText(levelText);
             this.parseLevel(levelData);
             this.currentLevel = levelNumber;
         } catch (error) {
             console.error('Error loading level:', error);
             this.generateDefaultMap();
         }
+    }
+
+    parseLevelText(levelText) {
+        const lines = levelText.split('\n').map(line => line.trim()).filter(line => line);
+        const blocks = [];
+        const powerUps = [];
+        const players = [];
+        
+        lines.forEach((line, y) => {
+            [...line].forEach((char, x) => {
+                switch (char) {
+                    case '*':
+                        blocks.push({ x, y, type: 'wall' });
+                        break;
+                    case '-':
+                        blocks.push({ x, y, type: 'block' });
+                        break;
+                    case '1':
+                        players.push({ id: 1, position: { x, y } });
+                        break;
+                    case '2':
+                        players.push({ id: 2, position: { x, y } });
+                        break;
+                    case '3':
+                        players.push({ id: 3, position: { x, y } });
+                        break;
+                    case '4':
+                        players.push({ id: 4, position: { x, y } });
+                        break;
+                }
+            });
+        });
+
+        return {
+            blocks,
+            powerUps,
+            players
+        };
     }
 
     parseLevel(levelData) {
@@ -76,52 +117,36 @@ export class GameMap {
     }
 
     generateDefaultMap() {
-        this.grid = [];
-        this.blocks.clear();
-        this.powerUps.clear();
+        const defaultMap = {
+            blocks: [],
+            powerUps: []
+        };
         
-        // Initialize empty grid with walls
+        // Generate border walls
         for (let y = 0; y < this.height; y++) {
-            this.grid[y] = [];
             for (let x = 0; x < this.width; x++) {
-                const isWall = y === 0 || y === this.height - 1 || 
-                             x === 0 || x === this.width - 1 || 
-                             (x % 2 === 0 && y % 2 === 0);
-                             
-                this.grid[y][x] = {
-                    type: isWall ? 'wall' : 'empty',
-                    powerUp: null,
-                    bomb: null,
-                    explosion: null
-                };
-            }
-        }
-        
-        // Add random blocks (avoiding player spawn points)
-        const spawnPoints = [
-            { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 2 },
-            { x: this.width - 2, y: 1 }, { x: this.width - 3, y: 1 }, { x: this.width - 2, y: 2 },
-            { x: 1, y: this.height - 2 }, { x: 2, y: this.height - 2 }, { x: 1, y: this.height - 3 },
-            { x: this.width - 2, y: this.height - 2 }, { x: this.width - 3, y: this.height - 2 }, { x: this.width - 2, y: this.height - 3 }
-        ];
-        
-        for (let y = 1; y < this.height - 1; y++) {
-            for (let x = 1; x < this.width - 1; x++) {
-                if (this.grid[y][x].type === 'empty' && 
-                    !spawnPoints.some(p => p.x === x && p.y === y) &&
-                    Math.random() < 0.7) {
-                    this.grid[y][x].type = 'block';
-                    this.blocks.add(`${x},${y}`);
+                if (y === 0 || y === this.height - 1 || x === 0 || x === this.width - 1) {
+                    defaultMap.blocks.push({ x, y, type: 'wall' });
                 }
             }
         }
+        
+        this.parseLevel(defaultMap);
     }
 
     clearBombs() {
         this.activeBombs.clear();
+        if (!this.grid || !Array.isArray(this.grid)) {
+            console.warn('Grid not initialized in clearBombs');
+            return;
+        }
         for (let y = 0; y < this.height; y++) {
+            if (!this.grid[y]) {
+                console.warn(`Grid row ${y} not initialized in clearBombs`);
+                continue;
+            }
             for (let x = 0; x < this.width; x++) {
-                if (this.grid[y][x].bomb) {
+                if (this.grid[y][x] && this.grid[y][x].bomb) {
                     this.grid[y][x].bomb = null;
                 }
             }
