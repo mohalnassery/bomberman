@@ -1,0 +1,230 @@
+/* Game Container */
+.game-container {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 20px;
+    min-height: 100vh;
+    background: #111;
+    color: #fff;
+    font-family: Arial, sans-serif;
+}
+
+/* Map Container */
+.map-container {
+    position: relative;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Map Grid */
+.map-grid {
+    display: grid;
+    grid-template-columns: repeat(15, 32px);
+    grid-template-rows: repeat(15, 32px);
+    gap: 0;
+    background: #222;
+    padding: 10px;
+    border-radius: 4px;
+}
+
+/* Cell Styles */
+.cell {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+/* Cell Types */
+.cell.empty {
+    background: #444;
+}
+
+.cell.wall {
+    background: #666;
+    border: 2px solid #333;
+}
+
+.cell.block {
+    background: #964B00;
+    border: 1px solid #555;
+}
+
+/* Player Character Base */
+.player-character {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    position: absolute;
+    transition: all 0.3s ease;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    color: white;
+    font-size: 14px;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+}
+
+/* Player Colors */
+.player-character.player-1 {
+    background: #ff4444;  /* Red */
+    box-shadow: 0 0 10px #ff4444;
+}
+
+.player-character.player-2 {
+    background: #44ff44;  /* Green */
+    box-shadow: 0 0 10px #44ff44;
+}
+
+.player-character.player-3 {
+    background: #4444ff;  /* Blue */
+    box-shadow: 0 0 10px #4444ff;
+}
+
+.player-character.player-4 {
+    background: #ffff44;  /* Yellow */
+    box-shadow: 0 0 10px #ffff44;
+}
+
+/* Player Name Tags */
+.player-name {
+    position: absolute;
+    bottom: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-size: 12px;
+    color: white;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+    background: rgba(0,0,0,0.7);
+    padding: 2px 6px;
+    border-radius: 3px;
+    z-index: 10;
+}
+
+/* Player Name Tag Colors */
+.player-1 ~ .player-name {
+    color: #ff4444;
+}
+
+.player-2 ~ .player-name {
+    color: #44ff44;
+}
+
+.player-3 ~ .player-name {
+    color: #4444ff;
+}
+
+.player-4 ~ .player-name {
+    color: #ffff44;
+}
+
+/* Bomb */
+.cell.bomb {
+    background-color: #ff0000;
+    animation: pulse 1s infinite;
+}
+
+/* Explosion */
+.cell.explosion {
+    background-color: #ffaa00;
+    animation: explode 0.5s ease-out;
+}
+
+/* Power-ups */
+.cell.power-up {
+    background-color: #44ff44;
+}
+
+/* Animations */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+@keyframes explode {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* HUD */
+.player-hud {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 15px;
+    border-radius: 8px;
+    z-index: 1000;
+}
+
+.player-stats {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 10px;
+    border-radius: 4px;
+    border-left: 4px solid;
+    min-width: 200px;
+}
+
+.player-name {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.player-info {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+    font-size: 14px;
+    color: #fff;
+}
+
+.player-lives {
+    color: #ff4444;
+    margin-bottom: 5px;
+}
+
+.player-stats-details {
+    display: flex;
+    gap: 10px;
+    font-size: 0.9em;
+}
+
+/* Waiting Screen */
+.waiting-screen {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 400px;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 8px;
+    color: white;
+    text-align: center;
+    padding: 20px;
+}
+
+.waiting-screen h2 {
+    font-size: 24px;
+    margin: 0;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}

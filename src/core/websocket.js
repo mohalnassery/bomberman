@@ -19,6 +19,19 @@ class WebSocketService {
     }
 
     connect() {
+        // If already connected, return resolved promise
+        if (this.connected && this.socket && this.socket.readyState === WebSocket.OPEN) {
+            return Promise.resolve();
+        }
+        
+        // If already connecting, return existing promise
+        if (this.socket && this.socket.readyState === WebSocket.CONNECTING) {
+            return new Promise((resolve, reject) => {
+                this.socket.addEventListener('open', () => resolve());
+                this.socket.addEventListener('error', (error) => reject(error));
+            });
+        }
+
         return new Promise((resolve, reject) => {
             try {
                 console.log('Connecting to:', this.serverUrl);
@@ -71,6 +84,15 @@ class WebSocketService {
             return;
         }
 
+        // Log incoming messages for debugging
+        console.debug(`WebSocket received: ${type}`, payload);
+
+        // Handle reconnection acknowledgment
+        if (type === 'reconnect_ack') {
+            this.handleReconnection(payload);
+            return;
+        }
+
         const handlers = this.handlers.get(type);
         if (handlers) {
             handlers.forEach(handler => {
@@ -83,6 +105,17 @@ class WebSocketService {
         }
     }
 
+    handleReconnection(payload) {
+        const { gameState, sessionId } = payload;
+        if (gameState) {
+            // Notify all handlers of game state sync
+            const syncHandlers = this.handlers.get('gameState');
+            if (syncHandlers) {
+                syncHandlers.forEach(handler => handler(gameState));
+            }
+        }
+    }
+
     send(type, data = {}) {
         if (!this.socket || !this.connected) {
             console.warn('Socket not connected, queueing message:', { type, data });
@@ -91,8 +124,17 @@ class WebSocketService {
         }
 
         try {
-            const message = JSON.stringify({ type, payload: data });
+            // Add timestamp to help with message ordering
+            const message = JSON.stringify({
+                type,
+                payload: {
+                    ...data,
+                    timestamp: Date.now()
+                }
+            });
+            
             this.socket.send(message);
+            console.debug(`WebSocket sent: ${type}`, data);
         } catch (error) {
             console.error('Error sending message:', error);
             this.pendingMessages.push({ type, data });
@@ -115,13 +157,31 @@ class WebSocketService {
     reconnect() {
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             console.error('Max reconnection attempts reached');
+            // Notify any error handlers
+            const errorHandlers = this.handlers.get('error');
+            if (errorHandlers) {
+                errorHandlers.forEach(handler => 
+                    handler(new Error('Max reconnection attempts reached'))
+                );
+            }
             return;
         }
 
         this.reconnectAttempts++;
+        const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+        
+        console.log(`Attempting reconnection in ${delay}ms (attempt ${this.reconnectAttempts})`);
+        
         setTimeout(() => {
-            this.connect().catch(() => this.reconnect());
-        }, this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1));
+            this.connect()
+                .then(() => {
+                    // Request state sync after reconnection
+                    this.send('requestSync', {
+                        sessionId: localStorage.getItem('sessionId')
+                    });
+                })
+                .catch(() => this.reconnect());
+        }, delay);
     }
 
     disconnect() {

@@ -1,11 +1,12 @@
 import { WebSocketServer } from 'ws';
 import os from 'os';
+import fs from 'fs';
+import path from 'path';
 
 function getLocalIP() {
     const interfaces = os.networkInterfaces();
     for (const name of Object.keys(interfaces)) {
         for (const networkInterface of interfaces[name]) {
-            // Skip internal (i.e. 127.0.0.1) and non-IPv4 addresses
             if (networkInterface.family === 'IPv4' && !networkInterface.internal) {
                 return networkInterface.address;
             }
@@ -27,12 +28,14 @@ class GameServer {
             levelVotes: new Map(),
             selectedLevel: null,
             gameStatus: 'waiting',
-            lastUpdateTime: Date.now()
+            lastUpdateTime: Date.now(),
+            grid: [],
+            level: null
         };
         this.tickRate = 60;
         this.tickInterval = null;
         this.mapWidth = 15;
-        this.mapHeight = 13;
+        this.mapHeight = 13;  // Match the level file dimensions
         this.setupServer();
     }
 
@@ -455,13 +458,25 @@ class GameServer {
     }
 
     sendGameState(ws) {
+        // Ensure we have a selected level from votes if not already set
+        if (!this.gameState.selectedLevel && this.gameState.levelVotes.size > 0) {
+            this.gameState.selectedLevel = this.selectWinningLevel();
+        }
+
         const gameState = {
             players: Array.from(this.gameState.players.values()),
             readyPlayers: Array.from(this.gameState.readyPlayers),
             levelVotes: Object.fromEntries(this.gameState.levelVotes),
             gameStatus: this.gameState.gameStatus,
-            selectedLevel: this.gameState.selectedLevel
+            selectedLevel: this.gameState.selectedLevel,
+            grid: this.gameState.grid,
+            blocks: Array.from(this.gameState.blocks).map(block => {
+                const [x, y] = block.split(',').map(Number);
+                return { x, y };
+            })
         };
+
+        console.log('Sending game state with level:', gameState.selectedLevel);
 
         ws.send(JSON.stringify({
             type: 'gameState',
@@ -517,7 +532,9 @@ class GameServer {
             blocks: Array.from(this.gameState.blocks),
             gameStatus: this.gameState.gameStatus,
             selectedLevel: this.gameState.selectedLevel,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            grid: this.gameState.grid,
+            level: this.gameState.level
         };
     }
 
@@ -535,7 +552,9 @@ class GameServer {
             readyPlayers: Array.from(this.gameState.readyPlayers),
             levelVotes: Object.fromEntries(this.gameState.levelVotes),
             gameStatus: this.gameState.gameStatus,
-            selectedLevel: this.gameState.selectedLevel
+            selectedLevel: this.gameState.selectedLevel,
+            grid: this.gameState.grid,
+            level: this.gameState.level
         };
 
         this.broadcastMessage({
@@ -634,6 +653,8 @@ class GameServer {
             return;
         }
 
+        console.log('Received level vote:', level, 'from player:', nickname);
+
         // Store the vote
         player.votedLevel = level;
         this.gameState.levelVotes.set(player.id, level);
@@ -689,7 +710,11 @@ class GameServer {
             .map(([level]) => level);
 
         // Randomly select from top voted levels
-        return topLevels[Math.floor(Math.random() * topLevels.length)];
+        const selectedLevel = topLevels[Math.floor(Math.random() * topLevels.length)];
+        
+        console.log('Selected winning level:', selectedLevel);
+        
+        return selectedLevel;
     }
 
     checkGameStart() {
@@ -725,40 +750,118 @@ class GameServer {
     }
 
     startGame() {
+        // Select the winning level if not already selected
+        if (!this.gameState.selectedLevel) {
+            this.gameState.selectedLevel = this.selectWinningLevel();
+        }
+        
+        console.log('Starting game with selected level:', this.gameState.selectedLevel);
+        
         this.gameState.gameStatus = 'running';
-        this.startGameLoop();
-
-        // Initialize game state
-        this.gameState.blocks.clear();
-        this.gameState.bombs.clear();
-        this.gameState.powerUps.clear();
-
-        // Generate initial blocks and power-ups based on selected level
+        
+        // Initialize game state with selected level
         this.initializeLevel(this.gameState.selectedLevel);
-
-        // Broadcast game start
+        
+        // Broadcast game start with selected level
         this.broadcast('gameStarted', {
             level: this.gameState.selectedLevel,
+            playerCount: this.gameState.players.size,
             timestamp: Date.now()
         });
+
+        this.startGameLoop();
     }
 
-    initializeLevel(levelName) {
-        // Add level initialization logic here
-        // This should set up blocks and initial power-ups based on the level layout
-        const levelLayouts = {
-            'L1': [
-                // Add level 1 layout
-            ],
-            'L2': [
-                // Add level 2 layout
-            ]
-            // Add more levels as needed
-        };
+    async initializeLevel(levelName) {
+        try {
+            // Read the level file
+            const levelPath = path.join(process.cwd(), 'src', 'levels', `${levelName}.TXT`);
+            const levelData = await fs.promises.readFile(levelPath, 'utf8');
+            
+            // Initialize grid
+            this.gameState.grid = [];
+            this.gameState.blocks.clear();
+            
+            // Process level data
+            const lines = levelData.split('\n')
+                .map(line => line.trim())
+                .filter(line => line);
+            
+            for (let y = 0; y < this.mapHeight; y++) {
+                this.gameState.grid[y] = [];
+                const line = lines[y] || '';
+                
+                for (let x = 0; x < this.mapWidth; x++) {
+                    const char = line[x] || ' ';
+                    this.gameState.grid[y][x] = {
+                        type: 'empty',
+                        powerUp: null
+                    };
+                    
+                    switch (char) {
+                        case '*':
+                            this.gameState.grid[y][x].type = 'wall';
+                            break;
+                        case '-':
+                            this.gameState.grid[y][x].type = 'block';
+                            this.gameState.blocks.add(`${x},${y}`);
+                            // 20% chance of power-up under block
+                            if (Math.random() < 0.2) {
+                                const powerUpType = this.getRandomPowerUpType();
+                                this.gameState.powerUps.set(`${x},${y}`, {
+                                    type: powerUpType,
+                                    position: { x, y }
+                                });
+                            }
+                            break;
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                            // Keep track of spawn positions
+                            this.gameState.grid[y][x].type = 'empty';
+                            break;
+                    }
+                }
+            }
+            
+            this.gameState.level = levelName;
+            console.log(`Server: Level ${levelName} initialized`);
+            
+            // Broadcast the updated game state with the new level
+            this.broadcast('levelLoaded', {
+                level: levelName,
+                grid: this.gameState.grid,
+                blocks: Array.from(this.gameState.blocks),
+                powerUps: Array.from(this.gameState.powerUps.entries()),
+                timestamp: Date.now()
+            });
+            
+        } catch (error) {
+            console.error('Error initializing level:', error);
+            // Fall back to default empty map
+            this.generateDefaultMap();
+        }
+    }
 
-        // Initialize blocks based on level layout
-        const layout = levelLayouts[levelName] || levelLayouts['L1'];
-        // Add implementation for block placement based on layout
+    generateDefaultMap() {
+        this.gameState.grid = [];
+        this.gameState.blocks.clear();
+        
+        for (let y = 0; y < this.mapHeight; y++) {
+            this.gameState.grid[y] = [];
+            for (let x = 0; x < this.mapWidth; x++) {
+                const isWall = x === 0 || x === this.mapWidth - 1 || 
+                              y === 0 || y === this.mapHeight - 1;
+                
+                this.gameState.grid[y][x] = {
+                    type: isWall ? 'wall' : 'empty',
+                    powerUp: null
+                };
+            }
+        }
+        
+        console.log('Server: Generated default map');
     }
 
     broadcastToPlayer(playerId, type, payload) {

@@ -10,9 +10,29 @@ export class Player {
         if (typeof props === 'object') {
             this.id = props.id;
             this.name = props.nickname;
-            this.position = props.position || { x: 0, y: 0 };
             this.gameMap = props.gameMap;
             this.isLocal = props.isLocal || false;
+            this.playerNumber = props.playerNumber || 1; // Default to player 1
+
+            // Get initial position from the level file based on player number
+            let initialPosition = { x: 0, y: 0 };
+
+            // Search the game map for the player's starting position
+            for (let y = 0; y < this.gameMap.height; y++) {
+                for (let x = 0; x < this.gameMap.width; x++) {
+                    if (this.gameMap.grid[y] && this.gameMap.grid[y][x] && 
+                        this.gameMap.grid[y][x].type === 'empty' && 
+                        this.gameMap.grid[y][x].playerStart === String(this.playerNumber)) {
+                        initialPosition = { x, y };
+                        console.log(`Player ${this.id} (${this.name}) found starting position at (${x}, ${y})`);
+                        break;
+                    }
+                }
+            }
+
+            // Use provided position or fall back to initial position from level
+            this.position = props.position || initialPosition;
+            console.log(`Player ${this.id} (${this.name}) initialized at position:`, this.position);
         } else {
             // Legacy constructor
             const [id, name, position, gameMap] = arguments;
@@ -21,6 +41,8 @@ export class Player {
             this.position = position;
             this.gameMap = gameMap;
             this.isLocal = false;
+            this.playerNumber = 1;
+            console.log(`Player ${this.id} (${this.name}) initialized with legacy constructor at position:`, this.position);
         }
 
         this.serverPosition = { ...this.position }; // Server's last known position
@@ -41,11 +63,36 @@ export class Player {
         this.updateThrottleMs = 50; // Send updates every 50ms
         this.interpolationFactor = 0.2; // Adjust for smoother movement
 
+        this.element = null;
+        this.createPlayerElement();
+
         if (this.isLocal) {
             this.boundKeyDown = this.handleKeyDown.bind(this);
             this.boundKeyUp = this.handleKeyUp.bind(this);
             this.initControls();
         }
+    }
+
+    createPlayerElement() {
+        // Create player element
+        const cell = document.createElement('div');
+        cell.className = `cell player-${this.id}`;
+        cell.dataset.x = this.position.x;
+        cell.dataset.y = this.position.y;
+
+        // Create character element with player number class
+        const character = document.createElement('div');
+        character.className = `player-character player-${this.playerNumber}`;
+
+        // Create name tag with player number
+        const nameTag = document.createElement('div');
+        nameTag.className = 'player-name';
+        nameTag.textContent = `${this.name} (P${this.playerNumber})`;
+
+        // Assemble elements
+        cell.appendChild(character);
+        cell.appendChild(nameTag);
+        this.element = cell;
     }
 
     initControls() {
@@ -366,37 +413,116 @@ export class Player {
     }
 
     render(container) {
-        // Remove previous player cell
+        // Remove all previous player cells for this player
         const playerId = typeof this.id === 'object' ? JSON.stringify(this.id) : this.id;
-        const previousCells = document.querySelectorAll(`.cell.player-${playerId}`);
-        previousCells.forEach(cell => cell.classList.remove(`player-${playerId}`));
+        const previousCells = document.querySelectorAll(`.player-${playerId}`);
+        previousCells.forEach(cell => {
+            cell.classList.remove(`player-${playerId}`);
+            const playerChar = cell.querySelector('.player-character');
+            if (playerChar) {
+                playerChar.remove();
+            }
+        });
 
         // Don't render if dead (unless in spectator mode)
         if (this.isDead) return;
 
-        // Render player on the map
+        // Get the exact cell based on rounded position
         const cell = $(`.cell[data-x="${Math.round(this.position.x)}"][data-y="${Math.round(this.position.y)}"]`);
         if (cell) {
             cell.classList.add(`player-${playerId}`);
             
-            // Add player info
-            const playerInfo = document.createElement('div');
-            playerInfo.className = 'player-info';
+            // Add player character if it doesn't exist
+            if (!cell.querySelector('.player-character')) {
+                const playerChar = document.createElement('div');
+                playerChar.className = 'player-character';
+                cell.appendChild(playerChar);
+            }
+        }
+    }
+
+    static connectedPlayers = new Set();
+
+    static addPlayer(player) {
+        Player.connectedPlayers.add(player);
+        Player.updateHUD();
+    }
+
+    static removePlayer(playerId) {
+        for (const player of Player.connectedPlayers) {
+            if (player.id === playerId) {
+                Player.connectedPlayers.delete(player);
+                break;
+            }
+        }
+        Player.updateHUD();
+    }
+
+    static updateHUD() {
+        const hudContainer = document.getElementById('player-hud');
+        if (!hudContainer) return;
+
+        hudContainer.innerHTML = '';
+        
+        // Sort players by ID to ensure consistent order
+        const players = Array.from(Player.connectedPlayers)
+            .sort((a, b) => a.id.localeCompare(b.id));
+
+        players.forEach(player => {
+            const playerHUD = document.createElement('div');
+            playerHUD.className = 'player-stats';
+            playerHUD.style.borderColor = player.color;
             
-            // Add lives with hearts
-            const lives = '❤️'.repeat(this.lives);
-            
-            playerInfo.innerHTML = `
-                <div class="player-name ${this.isDead ? 'dead' : ''}">${this.name}</div>
-                <div class="player-lives">${lives}</div>
-                <div class="player-stats">
-                    <span class="bombs">💣 ${this.maxBombs}</span>
-                    <span class="range">🔥 ${this.flameRange}</span>
-                    <span class="speed">🏃‍♂️ ${this.speed.toFixed(1)}x</span>
+            playerHUD.innerHTML = `
+                <div class="player-name" style="color: ${player.color}">${player.name}</div>
+                <div class="player-info">
+                    <div>Score: ${player.score}</div>
+                    <div>Bombs: ${player.maxBombs}</div>
+                    <div>Range: ${player.bombRange}</div>
+                    <div>Speed: ${player.speed}</div>
                 </div>
             `;
             
-            cell.appendChild(playerInfo);
+            hudContainer.appendChild(playerHUD);
+        });
+    }
+
+    updatePosition(x, y) {
+        const oldCell = this.gameMap.grid[Math.floor(this.position.y)][Math.floor(this.position.x)];
+        if (oldCell) {
+            oldCell.hasPlayer = false;
         }
+
+        this.position.x = x;
+        this.position.y = y;
+        
+        const newCell = this.gameMap.grid[Math.floor(y)][Math.floor(x)];
+        if (newCell) {
+            newCell.hasPlayer = true;
+        }
+
+        // Update server position
+        this.serverPosition = { x, y };
+        this.targetPosition = { x, y };
+    }
+
+    incrementScore(points = 1) {
+        this.score += points;
+        Player.updateHUD();
+    }
+
+    powerUp(type) {
+        switch(type) {
+            case 'bomb':
+                this.maxBombs++;
+                break;
+            case 'range':
+                this.bombRange++;
+                break;
+            case 'speed':
+                this.speed = Math.min(this.speed + 0.2, 2);
+                break;
+        }
+        Player.updateHUD();
     }
 }

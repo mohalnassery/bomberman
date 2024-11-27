@@ -9,7 +9,7 @@ export class Game extends Component {
     constructor(props) {
         super(props);
         this.players = new Map();
-        this.gameMap = new GameMap();
+        this.map = new GameMap();
         this.chat = null;
         this.isRunning = false;
         this.isGameOver = false;
@@ -38,9 +38,70 @@ export class Game extends Component {
     }
 
     handleGameState(data) {
-        if (!this.gameMap) return;  // Guard clause
+        if (!this.map) return;  // Guard clause
         
         const currentTime = Date.now();
+        
+        // Determine the correct level
+        let levelToLoad = data.selectedLevel;
+        if (!levelToLoad && data.levelVotes) {
+            // If no selected level, use the most voted level
+            const votes = {};
+            Object.values(data.levelVotes).forEach(level => {
+                votes[level] = (votes[level] || 0) + 1;
+            });
+            const maxVotes = Math.max(...Object.values(votes));
+            const topLevels = Object.entries(votes)
+                .filter(([_, count]) => count === maxVotes)
+                .map(([level]) => level);
+            levelToLoad = topLevels[0]; // Use the first level with max votes
+        }
+
+        console.log('Loading level from game state:', levelToLoad);
+        
+        // Handle initial game state for new players
+        if (data.gameStatus === 'running' && !this.isRunning) {
+            console.log('Initializing new player with game state:', data);
+            
+            // Set active players before loading the level
+            if (data.players) {
+                const activePlayerIds = data.players.map(p => p.id);
+                this.map.setActivePlayers(activePlayerIds);
+                console.log('Set active player IDs:', activePlayerIds);
+                
+                // Initialize players with their data and correct player numbers
+                data.players.forEach((playerData, index) => {
+                    if (!this.players.has(playerData.id)) {
+                        const player = new Player({
+                            id: playerData.id,
+                            nickname: playerData.nickname,
+                            isLocal: playerData.id === this.localPlayerId,
+                            gameMap: this.map,
+                            position: playerData.position || this.map.getPlayerStartPosition(index),
+                            playerNumber: index + 1  // Explicitly set player number (1-based)
+                        });
+                        this.players.set(playerData.id, player);
+                        console.log(`Initialized player ${playerData.nickname} (Player ${index + 1}) at position:`, player.position);
+                    }
+                });
+            }
+            
+            // Load the level first
+            if (levelToLoad) {
+                this.map.loadLevel(levelToLoad).catch(error => {
+                    console.error('Error loading level:', error);
+                    this.map.generateDefaultMap();
+                });
+            }
+            
+            // Update blocks from server state if available
+            if (data.blocks && Array.isArray(data.blocks)) {
+                const blockPositions = data.blocks.map(pos => `${pos.x},${pos.y}`);
+                this.map.updateBlocks(blockPositions);
+            }
+
+            this.isRunning = true;
+        }
         
         // Add state update to buffer
         this.stateBuffer.push({
@@ -54,8 +115,18 @@ export class Game extends Component {
             this.stateBuffer.shift();
         }
         
-        // Update game state
         this.updateGameState();
+    }
+
+    getPlayerStartPosition(playerId) {
+        // Get player start positions based on level 2 layout
+        const positions = {
+            '1': { x: 5, y: 5 },  // Top left center
+            '2': { x: 9, y: 7 },  // Bottom right center
+            '3': { x: 9, y: 5 },  // Top right center
+            '4': { x: 5, y: 7 }   // Bottom left center
+        };
+        return positions[playerId] || { x: 1, y: 1 };
     }
 
     updateGameState() {
@@ -81,15 +152,7 @@ export class Game extends Component {
             previousState = nextState;
         }
 
-        if (!nextState || typeof nextState !== 'object') {
-            console.warn('Invalid game state received:', nextState);
-            return;
-        }
-
         // Update player states
-        const factor = Math.min(1, Math.max(0, (renderTime - previousState.timestamp) / 
-                                             (nextState.timestamp - previousState.timestamp)));
-        
         nextState.players?.forEach(playerData => {
             let player = this.players.get(playerData.id);
             if (!player) {
@@ -97,36 +160,41 @@ export class Game extends Component {
                     id: playerData.id,
                     nickname: playerData.nickname,
                     isLocal: playerData.id === this.localPlayerId,
-                    gameMap: this.gameMap,
+                    gameMap: this.map,
                     position: playerData.position || { x: 0, y: 0 }
                 });
                 this.players.set(playerData.id, player);
+                this.map.addPlayer(player);
             }
             
-            const previousPlayerData = previousState.players?.find(p => p.id === playerData.id) || playerData;
+            // Update player stats
+            player.lives = playerData.lives || player.lives;
+            player.maxBombs = playerData.maxBombs || player.maxBombs;
+            player.flameRange = playerData.flameRange || player.flameRange;
+            player.speed = playerData.speed || player.speed;
+            player.isDead = playerData.isDead || false;
             
-            // Interpolate position
-            if (playerData.position && previousPlayerData.position) {
-                player.position = {
-                    x: previousPlayerData.position.x + 
-                       (playerData.position.x - previousPlayerData.position.x) * factor,
-                    y: previousPlayerData.position.y + 
-                       (playerData.position.y - previousPlayerData.position.y) * factor
-                };
+            // Update position with interpolation
+            if (playerData.position) {
+                player.updateServerPosition(playerData.position, nextState.timestamp);
             }
-            
-            // Update other player properties
-            if (playerData.isDead !== undefined) player.isDead = playerData.isDead;
-            if (playerData.lives !== undefined) player.lives = playerData.lives;
-            if (playerData.powerUps) player.powerUps = playerData.powerUps;
         });
+
+        // Remove players that are no longer in the game
+        const currentPlayerIds = new Set(nextState.players?.map(p => p.id) || []);
+        for (const [playerId, player] of this.players) {
+            if (!currentPlayerIds.has(playerId)) {
+                this.players.delete(playerId);
+                this.map.removePlayer(playerId);
+            }
+        }
         
         // Update bombs
-        this.gameMap.clearBombs();
+        this.map.clearBombs();
         if (Array.isArray(nextState.bombs)) {
             nextState.bombs.forEach(bombData => {
                 if (bombData && bombData.position) {
-                    this.gameMap.placeBomb(
+                    this.map.placeBomb(
                         bombData.position.x,
                         bombData.position.y,
                         bombData.range,
@@ -137,22 +205,17 @@ export class Game extends Component {
         }
         
         // Update power-ups
-        this.gameMap.clearPowerUps();
+        this.map.clearPowerUps();
         if (Array.isArray(nextState.powerUps)) {
             nextState.powerUps.forEach(powerUpData => {
                 if (powerUpData && powerUpData.position) {
-                    this.gameMap.addPowerUp(
+                    this.map.addPowerUp(
                         powerUpData.position.x,
                         powerUpData.position.y,
                         powerUpData.type
                     );
                 }
             });
-        }
-        
-        // Update blocks
-        if (Array.isArray(nextState.blocks)) {
-            this.gameMap.updateBlocks(nextState.blocks);
         }
         
         // Update game status
@@ -174,20 +237,30 @@ export class Game extends Component {
                 throw new Error('Missing player information');
             }
 
-            // Get the selected level from localStorage
-            const selectedLevel = playerInfo.selectedLevel || localStorage.getItem('selectedLevel') || '1';
-            console.log('Loading level:', selectedLevel);
+            // Get the selected level from session state or votes
+            const gameState = playerSession.gameState || {};
+            let selectedLevel = gameState.selectedLevel;
             
-            // Initialize map with selected level
-            try {
-                await this.gameMap.loadLevel(selectedLevel);
-            } catch (error) {
-                console.error('Failed to load selected level:', error);
-                console.warn('Falling back to default map');
-                this.gameMap.generateDefaultMap();
+            if (!selectedLevel && gameState.levelVotes) {
+                // If no selected level, use the voted level
+                selectedLevel = gameState.levelVotes[playerInfo.nickname];
             }
-
-            await webSocket.connect();
+            
+            console.log('Starting game with level:', selectedLevel);
+            
+            // Ensure root element exists
+            const root = document.getElementById('root');
+            if (!root) {
+                throw new Error('Root element not found');
+            }
+            
+            // Clear the root element and add a loading indicator
+            root.innerHTML = '<div class="loading">Loading game...</div>';
+            
+            // Only connect if not already connected
+            if (!webSocket.connected) {
+                await webSocket.connect();
+            }
             
             // Request initial game state from server
             webSocket.send('requestGameState', {
@@ -198,24 +271,64 @@ export class Game extends Component {
             
             // Wait for initial state before starting game loop
             await new Promise((resolve) => {
-                const handleInitialState = (data) => {
-                    // Ensure map is initialized before handling state
-                    if (!this.gameMap.grid || !this.gameMap.grid.length) {
-                        console.warn('Map not initialized, generating default map');
-                        this.gameMap.generateDefaultMap();
+                const handleInitialState = async (data) => {
+                    try {
+                        console.log('Received initial game state:', data);
+                        
+                        // Clear existing players
+                        this.players.clear();
+                        
+                        // Initialize game map with correct level first
+                        if (data.selectedLevel) {
+                            await this.map.loadLevel(data.selectedLevel);
+                        }
+                        
+                        // Initialize players
+                        if (data.players && Array.isArray(data.players)) {
+                            const playerIds = data.players.map(p => p.id);
+                            this.map.setActivePlayers(playerIds);
+                            
+                            // Initialize each player with their position from the level file
+                            data.players.forEach((playerData, index) => {
+                                const startPosition = this.map.getPlayerStartPosition(index);
+                                const player = new Player({
+                                    id: playerData.id,
+                                    nickname: playerData.nickname,
+                                    isLocal: playerData.id === this.localPlayerId,
+                                    gameMap: this.map,
+                                    position: playerData.position || startPosition,
+                                    playerNumber: index + 1 // Set player number (1-based)
+                                });
+                                this.players.set(playerData.id, player);
+                                console.log(`Initialized player ${playerData.nickname} (Player ${index + 1}) at position:`, startPosition);
+                            });
+                        }
+                        
+                        // Initialize blocks if available
+                        if (data.blocks && Array.isArray(data.blocks)) {
+                            const blockPositions = data.blocks.map(pos => `${pos.x},${pos.y}`);
+                            this.map.updateBlocks(blockPositions);
+                        }
+                        
+                        // Start game loop
+                        this.isRunning = true;
+                        this.gameLoop();
+                        
+                    } catch (error) {
+                        console.error('Error handling initial state:', error);
+                        throw error;
                     }
-                    this.handleGameState(data);
-                    webSocket.off('gameState', handleInitialState);
-                    resolve();
                 };
                 webSocket.on('gameState', handleInitialState);
             });
-            
-            this.isRunning = true;
-            this.gameLoop();
         } catch (error) {
             console.error('Failed to start game:', error);
-            window.location.hash = '/';
+            const root = document.getElementById('root');
+            if (root) {
+                root.innerHTML = '<div class="error">Failed to start game. <a href="#/">Return to Lobby</a></div>';
+            } else {
+                window.location.hash = '/';
+            }
         }
     }
 
@@ -238,17 +351,21 @@ export class Game extends Component {
 
     handlePlayerJoin(data) {
         const { id, nickname, position } = data;
-        if (!this.players.has(id)) {
-            const player = new Player(id, nickname, position, this.gameMap);
-            this.players.set(id, player);
-        }
+        const player = new Player({
+            id,
+            nickname,
+            position,
+            gameMap: this.map,
+            isLocal: id === this.localPlayerId
+        });
+        this.players.set(id, player);
+        this.map.addPlayer(player);
     }
 
     handlePlayerLeave(data) {
         const { playerId } = data;
-        if (this.players.has(playerId)) {
-            this.players.delete(playerId);
-        }
+        this.players.delete(playerId);
+        this.map.removePlayer(playerId);
     }
 
     handlePlayerMove(data) {
@@ -271,9 +388,9 @@ export class Game extends Component {
         const { playerId, position, range, timestamp } = data;
         const player = this.players.get(playerId);
         
-        if (player && !this.gameMap.hasBomb(position.x, position.y)) {
+        if (player && !this.map.hasBomb(position.x, position.y)) {
             player.activeBombs++;
-            this.gameMap.placeBomb(position.x, position.y, range, playerId);
+            this.map.placeBomb(position.x, position.y, range, playerId);
             
             // Schedule bomb explosion
             setTimeout(() => {
@@ -292,7 +409,7 @@ export class Game extends Component {
         
         if (player) {
             player.activeBombs--;
-            this.gameMap.explodeBomb(position.x, position.y);
+            this.map.explodeBomb(position.x, position.y);
         }
     }
 
@@ -301,7 +418,7 @@ export class Game extends Component {
         const player = this.players.get(playerId);
         
         if (player) {
-            const cell = this.gameMap.grid[position.y][position.x];
+            const cell = this.map.grid[position.y][position.x];
             if (cell && cell.type === 'powerup') {
                 player.handlePowerUp(type);
                 cell.type = 'empty';
@@ -463,7 +580,7 @@ export class Game extends Component {
         });
 
         // Update game map (bombs, explosions, etc.)
-        this.gameMap.update(deltaTime);
+        this.map.update(deltaTime);
 
         // Check win condition
         const alivePlayers = Array.from(this.players.values()).filter(p => !p.isDead);
@@ -488,15 +605,24 @@ export class Game extends Component {
         gameContainer.className = 'game-container';
         root.appendChild(gameContainer);
 
-        // Render map
-        this.gameMap.render(gameContainer);
+        // Only render map and players if the game is running
+        if (this.isRunning) {
+            // Render map (which includes player HUD)
+            this.map.render(gameContainer);
 
-        // Render all players
-        this.players.forEach(player => {
-            if (!player.isDead || this.spectatorMode) {
-                player.render(gameContainer);
-            }
-        });
+            // Render all players
+            this.players.forEach(player => {
+                if (!player.isDead || this.spectatorMode) {
+                    player.render(gameContainer);
+                }
+            });
+        } else {
+            // Show waiting screen
+            const waitingScreen = document.createElement('div');
+            waitingScreen.className = 'waiting-screen';
+            waitingScreen.innerHTML = '<h2>Waiting for game to start...</h2>';
+            gameContainer.appendChild(waitingScreen);
+        }
 
         // Render chat
         if (this.chat) {

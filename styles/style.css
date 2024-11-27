@@ -180,42 +180,94 @@ body {
 }
 
 /* Game Map Styles */
-.game-map {
+.map-container {
     display: flex;
-    flex-direction: column;
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    justify-content: center;
+    align-items: center;
+    margin: 20px;
+    padding: 10px;
+    background-color: #333;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
-.row {
-    display: flex;
+
+.map-grid {
+    display: grid;
+    grid-template-columns: repeat(15, 40px);
+    grid-template-rows: repeat(13, 40px);
+    gap: 1px;
+    background-color: #222;
+    padding: 10px;
+    border-radius: 4px;
 }
+
 .cell {
     width: 40px;
     height: 40px;
-    border: 1px solid #333;
-    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     position: relative;
+    transition: all 0.2s ease;
 }
+
+.cell[class*="player-"] {
+    position: relative;
+    overflow: visible;
+}
+
+.player-character {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background-color: #4CAF50;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    z-index: 2;
+}
+
 .cell.wall {
-    background-color: #555;
+    background-color: #2c3e50;
+    border: 2px solid #34495e;
 }
+
 .cell.block {
-    background-color: #888;
+    background-color: #7f8c8d;
+    border: 1px solid #95a5a6;
 }
-.cell.player {
-    background-color: #0f0;
+
+.cell.empty {
+    background-color: #8a8a8a;
 }
+
 .cell.bomb {
-    background-color: #f00;
+    background-color: #000;
+    border-radius: 50%;
+    animation: pulse 1s infinite;
 }
+
 .cell.explosion {
-    background-color: #ff0;
+    background-color: #e74c3c;
+    animation: explode 0.5s ease-out;
 }
-.cell.power-up {
-    background-color: #00f;
+
+.cell.powerup {
+    background-color: #f1c40f;
+    border-radius: 5px;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+@keyframes explode {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1.5); opacity: 0; }
 }
 
 /* Chat Styles */
@@ -382,42 +434,73 @@ body {
 
 /* Game Container and Camera */
 .game-container {
-    position: relative;
-    transform: translate(var(--camera-x, 0), var(--camera-y, 0));
-    transition: transform 0.1s ease;
-}
-
-/* Player Styles */
-.player-info {
-    position: absolute;
-    top: -40px;
-    left: 50%;
-    transform: translateX(-50%);
-    text-align: center;
-    white-space: nowrap;
-    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-}
-
-.player-name {
-    font-weight: bold;
-    color: #fff;
-}
-
-.player-name.dead {
-    color: #666;
-    text-decoration: line-through;
-}
-
-.player-lives {
-    font-size: 14px;
-    line-height: 1;
-}
-
-.player-stats {
     display: flex;
-    gap: 8px;
-    font-size: 12px;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding: 20px;
+}
+
+.player-hud {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 10px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.player-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    min-width: 150px;
+}
+
+.player-card .player-name {
+    font-size: 1.2em;
+    font-weight: bold;
+    margin-bottom: 5px;
     color: #fff;
+}
+
+.player-card .player-stats {
+    display: flex;
+    gap: 10px;
+    font-size: 0.9em;
+    color: #ddd;
+}
+
+.player-card .player-lives {
+    color: #ff4444;
+    font-size: 1.1em;
+    margin: 5px 0;
+}
+
+.player-card.dead {
+    opacity: 0.5;
+}
+
+.player-card .stat {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.player-card .stat-icon {
+    font-size: 1.2em;
+}
+
+.game-map {
+    display: inline-block;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 10px;
+    border-radius: 8px;
 }
 
 /* Death Effect */
@@ -440,20 +523,6 @@ body {
     100% {
         transform: scale(2);
         opacity: 0;
-    }
-}
-
-/* Damage Effect */
-.cell.damaged {
-    animation: damageFlash 0.5s ease-out;
-}
-
-@keyframes damageFlash {
-    0%, 50%, 100% {
-        filter: none;
-    }
-    25%, 75% {
-        filter: brightness(2) saturate(2);
     }
 }
 
@@ -562,7 +631,6 @@ body {
         opacity: 1;
     }
 }
-
 
 .player-name {
     color: #4CAF50;
