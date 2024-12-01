@@ -19,104 +19,75 @@ export class Game extends Component {
         this.spectatorMode = false;
         this.lastFrameTime = 0;
         this.stateBuffer = [];
+        this.mapLoaded = false;  
         this.interpolationDelay = 100;
         
         // Bind event handlers
         this.handleGameState = this.handleGameState.bind(this);
         this.handlePlayerJoin = this.handlePlayerJoin.bind(this);
         this.handlePlayerLeave = this.handlePlayerLeave.bind(this);
+        this.handlePlayerMove = this.handlePlayerMove.bind(this);
         this.handleGameOver = this.handleGameOver.bind(this);
-        
+
         this.setupWebSocket();
     }
 
     setupWebSocket() {
+        console.log('Setting up WebSocket handlers');
+        
+        // Add a general message listener to debug what's coming in
+        webSocket.socket.addEventListener('message', (event) => {
+            console.log('Raw WebSocket message received:', event.data);
+            const data = JSON.parse(event.data);
+            console.log('Parsed message:', data);
+        });
+
+        webSocket.on('playerMove', (data) => {
+            console.log('Received playerMove event:', data);
+            this.handlePlayerMove(data);
+        });
+        
         webSocket.on('gameState', this.handleGameState);
         webSocket.on('playerJoin', this.handlePlayerJoin);
+        webSocket.on('playerMove', this.handlePlayerMove);
         webSocket.on('playerLeave', this.handlePlayerLeave);
         webSocket.on('gameOver', this.handleGameOver);
     }
 
     handleGameState(data) {
-        if (!this.map) return;  // Guard clause
+        console.log('Received game state:', data);
         
-        const currentTime = Date.now();
-        
-        // Determine the correct level
-        let levelToLoad = data.selectedLevel;
-        if (!levelToLoad && data.levelVotes) {
-            // If no selected level, use the most voted level
-            const votes = {};
-            Object.values(data.levelVotes).forEach(level => {
-                votes[level] = (votes[level] || 0) + 1;
-            });
-            const maxVotes = Math.max(...Object.values(votes));
-            const topLevels = Object.entries(votes)
-                .filter(([_, count]) => count === maxVotes)
-                .map(([level]) => level);
-            levelToLoad = topLevels[0]; // Use the first level with max votes
+        // Load map only once
+        if (data.selectedLevel && !this.mapLoaded) {
+            console.log('Loading level:', data.selectedLevel);
+            this.map.loadLevel(data.selectedLevel);
+            this.mapLoaded = true;
         }
-
-        console.log('Loading level from game state:', levelToLoad);
         
-        // Handle initial game state for new players
-        if (data.gameStatus === 'running' && !this.isRunning) {
-            console.log('Initializing new player with game state:', data);
-            
-            // Set active players before loading the level
-            if (data.players) {
-                const activePlayerIds = data.players.map(p => p.id);
-                this.map.setActivePlayers(activePlayerIds);
-                console.log('Set active player IDs:', activePlayerIds);
+        // Update all players from game state
+        if (data.players) {
+            data.players.forEach(playerData => {
+                let player = this.players.get(playerData.id);
                 
-                // Initialize players with their data and correct player numbers
-                data.players.forEach((playerData, index) => {
-                    if (!this.players.has(playerData.id)) {
-                        const player = new Player({
-                            id: playerData.id,
-                            nickname: playerData.nickname,
-                            isLocal: playerData.id === this.localPlayerId,
-                            gameMap: this.map,
-                            position: playerData.position || this.map.getPlayerStartPosition(index),
-                            playerNumber: index + 1  // Explicitly set player number (1-based)
-                        });
-                        this.players.set(playerData.id, player);
-                        console.log(`Initialized player ${playerData.nickname} (Player ${index + 1}) at position:`, player.position);
-                    }
-                });
-            }
-            
-            // Load the level first
-            if (levelToLoad) {
-                this.map.loadLevel(levelToLoad).catch(error => {
-                    console.error('Error loading level:', error);
-                    this.map.generateDefaultMap();
-                });
-            }
-            
-            // Update blocks from server state if available
-            if (data.blocks && Array.isArray(data.blocks)) {
-                const blockPositions = data.blocks.map(pos => `${pos.x},${pos.y}`);
-                this.map.updateBlocks(blockPositions);
-            }
+                if (!player) {
+                    // Create new player if doesn't exist
+                    player = new Player({
+                        id: playerData.id,
+                        nickname: playerData.nickname,
+                        isLocal: playerData.id === this.localPlayerId,
+                        gameMap: this.map,
+                        position: playerData.position
+                    });
+                    this.players.set(playerData.id, player);
+                    this.map.addPlayer(player);
+                }
 
-            this.isRunning = true;
+                // Update player position
+                player.updatePosition(playerData.position);
+            });
         }
-        
-        // Add state update to buffer
-        this.stateBuffer.push({
-            state: data,
-            timestamp: currentTime
-        });
-        
-        // Remove old states from buffer
-        while (this.stateBuffer.length > 0 && 
-               currentTime - this.stateBuffer[0].timestamp > 1000) {
-            this.stateBuffer.shift();
-        }
-        
-        this.updateGameState();
     }
+
 
     getPlayerStartPosition(playerId) {
         // Get player start positions based on level 2 layout
@@ -300,6 +271,7 @@ export class Game extends Component {
                                     playerNumber: index + 1 // Set player number (1-based)
                                 });
                                 this.players.set(playerData.id, player);
+                                this.map.addPlayer(player);
                                 console.log(`Initialized player ${playerData.nickname} (Player ${index + 1}) at position:`, startPosition);
                             });
                         }
@@ -369,18 +341,13 @@ export class Game extends Component {
     }
 
     handlePlayerMove(data) {
-        const { id, position, timestamp } = data;
-        const player = this.players.get(id);
-        
-        if (player && id !== this.localPlayerId) {
-            // Apply position update with interpolation
-            const latency = Date.now() - timestamp;
-            const interpolationFactor = Math.min(1, latency / 100); // 100ms interpolation window
-            
-            player.position = {
-                x: player.position.x + (position.x - player.position.x) * interpolationFactor,
-                y: player.position.y + (position.y - player.position.y) * interpolationFactor
-            };
+        const { playerId, position } = data;
+        console.log('Handling move for player:', playerId, position);
+
+        const player = this.players.get(playerId);
+        if (player) {
+            player.updatePosition(position);
+            console.log(`Updated position for player ${playerId} to:`, position);
         }
     }
 
@@ -575,12 +542,23 @@ export class Game extends Component {
         // Update all players
         this.players.forEach(player => {
             if (!player.isDead) {
+                const oldPosition = { ...player.position };
                 player.update(deltaTime);
+
+                   // If local player moved, send update to server
+            if (player.isLocal && 
+                (oldPosition.x !== player.position.x || oldPosition.y !== player.position.y)) {
+                webSocket.send('playerMove', {
+                    position: player.position,
+                    timestamp: Date.now()
+                });
+            }
             }
         });
 
         // Update game map (bombs, explosions, etc.)
         this.map.update(deltaTime);
+        
 
         // Check win condition
         const alivePlayers = Array.from(this.players.values()).filter(p => !p.isDead);

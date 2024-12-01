@@ -137,18 +137,44 @@ class GameServer {
     }
 
     handlePlayerMove(ws, data) {
-        const { id, position, timestamp } = data;
-        const player = this.gameState.players.get(id);
-        
-        if (!player) return;
-        
-        // Add move to pending moves queue
-        if (!player.pendingMoves) {
-            player.pendingMoves = [];
+        const playerId = ws.playerId;
+        if (!playerId) {
+            console.log('No playerId found for movement');
+            return;
         }
-        
-        player.pendingMoves.push({ position, timestamp });
+
+        const player = this.gameState.players.get(playerId);
+        if (!player) {
+            console.log('No player found for movement');
+            return;
+        }
+
+        // Update player position in server's game state
+        player.position = data.position;
+        console.log(`Server: Player ${playerId} moved to:`, data.position);
+
+        // Create the message once
+        const moveMessage = JSON.stringify({
+            type: 'playerMove',
+            payload: {
+                playerId: playerId,
+                position: data.position,
+                timestamp: Date.now()
+            }
+        });
+
+        // Log the message we're about to broadcast
+        console.log('Broadcasting message:', moveMessage);
+
+        // Broadcast to ALL clients including sender
+        this.wss.clients.forEach(client => {
+            if (client.readyState === 1) {
+                client.send(moveMessage);
+                console.log(`Sent movement update to client ${client.playerId}`);
+            }
+        });
     }
+
 
     handleBombExplosion(bombId, bomb) {
         const affectedPositions = this.calculateExplosionArea(bomb.position, bomb.range);
@@ -379,6 +405,10 @@ class GameServer {
                         break;
                     case 'voteLevel':
                         this.handleLevelVote(ws, data.payload);
+                        break;
+                    case 'playerMove':  // Add this case
+                    console.log('Handling player move');
+                        this.handlePlayerMove(ws, data.payload);
                         break;
                     case 'requestSync':
                         this.handleSyncRequest(ws, data.payload);

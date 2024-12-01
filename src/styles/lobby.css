@@ -44,7 +44,7 @@
 
 .level-item.selected {
     background: #e3f2fd;
-    border: 2px solid #2196f3;
+    border: 2px solid #28f321;
 }
 
 .level-name {
@@ -57,7 +57,7 @@
 }
 
 .vote-btn {
-    background: #2196f3;
+    background: #1eb600;
     color: white;
     border: none;
     padding: 5px 15px;
@@ -67,7 +67,7 @@
 }
 
 .vote-btn:hover {
-    background: #1976d2;
+    background: #1dad007a;
 }
 
 .vote-btn:disabled {
@@ -110,7 +110,7 @@
 
 .player-vote {
     margin-left: 10px;
-    color: #2196f3;
+    color: #44f3217c;
     font-size: 0.9em;
 }
 

@@ -79,6 +79,8 @@ export class Lobby extends Component {
                 window.location.reload();
             }
         });
+
+        webSocket.on('chat', this.handleChatMessage.bind(this));
     }
 
     render() {
@@ -87,18 +89,27 @@ export class Lobby extends Component {
         const isReady = currentPlayer?.ready || false;
         
         let html = `
-            <div class="lobby-container">
-                <h1>Bomberman Lobby</h1>
+            <div class="page-container">
+                <div class="main-content">
+                    <div class="lobby-container">
+                        <h1>Bomberman Lobby</h1>`;
+
+        // Only show join section if not joined
+        if (!this.isJoined) {
+            html += `
                 <div class="join-section">
                     <input type="text" id="nickname" placeholder="Enter your nickname" 
-                           value="${this.nickname}" ${this.isJoined ? 'disabled' : ''}>
-                    <button id="joinBtn" ${this.isJoined ? 'disabled' : ''}>Join Game</button>
+                           value="${this.nickname}">
+                    <button id="joinBtn">Join Game</button>
                 </div>`;
+        }
 
+        // Show game controls if joined
         if (this.isJoined) {
             html += `
                 <div class="lobby-controls">
-                    <button id="readyBtn" class="${isReady ? 'ready' : ''}" ${!state.levelVotes[this.nickname] ? 'disabled' : ''}>
+                    <button id="readyBtn" class="${isReady ? 'ready' : ''}" 
+                            ${!state.levelVotes[this.nickname] ? 'disabled' : ''}>
                         ${isReady ? 'Not Ready' : 'Ready'}
                     </button>
                 </div>
@@ -123,10 +134,32 @@ export class Lobby extends Component {
                             }).join('')}
                     </div>
                 </div>
-                ${this.renderPlayersList(state)}`;
+                ${this.renderPlayersList(state)}
+            </div>
+            </div>`;
+            
+            // Chat section
+            html += `
+                <div class="chat-section">
+                    <div class="chat">
+                        <div class="chat-header">
+                            <span class="chat-title">Chat</span>
+                            <div class="chat-controls">
+                                <button class="minimize-btn">_</button>
+                            </div>
+                        </div>
+                        <div class="chat-body">
+                            <div id="chat-messages"></div>
+                            <div class="chat-input-container">
+                                <input type="text" id="chat-input" placeholder="Type a message...">
+                                <button id="send-btn">Send</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
         }
 
-        html += '</div>';
+        html += `</div>`;
         
         const root = document.getElementById('root');
         if (root) {
@@ -652,6 +685,54 @@ export class Lobby extends Component {
                     }
                 });
             });
+        }
+
+        // Add chat event listeners
+        const chatInput = document.getElementById('chat-input');
+        const sendBtn = document.getElementById('send-btn');
+        const minimizeBtn = document.querySelector('.minimize-btn');
+        const chat = document.querySelector('.chat');
+
+        if (chatInput && sendBtn) {
+            const sendMessage = () => {
+                const message = chatInput.value.trim();
+                if (message) {
+                    webSocket.send('chat', {
+                        nickname: this.nickname,
+                        message: message
+                    });
+                    chatInput.value = '';
+                }
+            };
+
+            sendBtn.addEventListener('click', sendMessage);
+            chatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+        }
+
+        if (minimizeBtn && chat) {
+            minimizeBtn.addEventListener('click', () => {
+                chat.classList.toggle('minimized');
+            });
+        }
+    }
+
+    handleChatMessage(data) {
+        const { nickname, message } = data;
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'chat-message';
+            messageElement.innerHTML = `
+                <span class="timestamp">${new Date().toLocaleTimeString()}</span>
+                <span class="player-name">${nickname}:</span>
+                <span class="message">${message}</span>
+            `;
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         }
     }
 }

@@ -127,10 +127,12 @@ export class GameMap {
             return pos;
         }
         
-        // Fallback positions if not found in level
-        const fallbackPositions = [
-            {x: 1, y: 1},             // Player 1
-            {x: this.width-2, y: this.height-2}  // Player 2
+         // Fallback positions if not found in level
+         const fallbackPositions = [
+            {x: 1, y: 1},                        // Player 1: Top-left corner
+            {x: this.width-2, y: this.height-2}, // Player 2: Bottom-right corner
+            {x: this.width-2, y: 1},             // Player 3: Top-right corner
+            {x: 1, y: this.height-2}             // Player 4: Bottom-left corner
         ];
         
         const fallbackPos = fallbackPositions[playerIndex % 2];
@@ -470,17 +472,26 @@ export class GameMap {
         });
     }
 
-    getPlayersInCell(x, y) {
+    getPlayersInCell(x, y, excludePlayerId = null) {
+        console.log('Players in map:', Array.from(this.players.entries()));
         return Array.from(this.players.values()).filter(player => {
+            if (excludePlayerId && player.id === excludePlayerId) {
+                return false; // Skip the excluded player
+            }
             const playerX = Math.floor(player.position.x);
             const playerY = Math.floor(player.position.y);
-            return playerX === x && playerY === y;
+            const isInCell = playerX === x && playerY === y;
+            if (isInCell) {
+                console.log(`Found player ${player.id} in cell ${x},${y}`);
+            }
+            return isInCell;
         });
     }
 
     addPlayer(player) {
+        console.log('Adding player to map:', player.id);
         this.players.set(player.id, player);
-        player.render(document.querySelector('.map-grid'));
+        console.log('Current players in map:', Array.from(this.players.keys()));
     }
 
     removePlayer(playerId) {
@@ -636,4 +647,60 @@ export class GameMap {
             });
         }
     }
+
+    checkCollision(x, y, playerId) {
+        if (!this.players.size) {
+            console.log('No players in map!');
+        }
+        
+        const CELL_SIZE = 40;
+        const PLAYER_SIZE = 30;
+        const COLLISION_TOLERANCE = 10;
+        
+        const cellX = Math.floor(x);
+        const cellY = Math.floor(y);
+        
+        const playerCenterX = x * CELL_SIZE + PLAYER_SIZE/2;
+        const playerCenterY = y * CELL_SIZE + PLAYER_SIZE/2;
+        
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                const checkX = cellX + dx;
+                const checkY = cellY + dy;
+                
+                if (checkX < 0 || checkX >= this.width || checkY < 0 || checkY >= this.height) {
+                    continue;
+                }
+                
+                const cell = this.grid[checkY][checkX];
+                const playersInCell = this.getPlayersInCell(checkX, checkY, playerId);
+                
+                if (playersInCell.length > 0) {
+                    console.log(`Found ${playersInCell.length} players in cell ${checkX},${checkY}`);
+                }
+                
+                if (cell && (
+                    cell.type === 'wall' || 
+                    cell.type === 'block' || 
+                    cell.bomb || 
+                    playersInCell.length > 0
+                )) {
+                    const cellCenterX = checkX * CELL_SIZE + CELL_SIZE/2;
+                    const cellCenterY = checkY * CELL_SIZE + CELL_SIZE/2;
+                    
+                    const dx = Math.abs(playerCenterX - cellCenterX);
+                    const dy = Math.abs(playerCenterY - cellCenterY);
+                    
+                    const collisionThreshold = (CELL_SIZE + PLAYER_SIZE) / 2 - COLLISION_TOLERANCE;
+                    if (dx < collisionThreshold && dy < collisionThreshold) {
+                        console.log('Collision detected at:', checkX, checkY);
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        return false;
+    }
 }
+

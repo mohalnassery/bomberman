@@ -1,17 +1,49 @@
 /* styles/style.css */
+/* Import fonts from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@400;500;700&display=swap');
+
 /* General Styles */
 body {
     margin: 0;
     padding: 0;
-    font-family: Arial, sans-serif;
-    background-color: #222;
+    font-family: 'Orbitron', sans-serif;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2e2e2e 100%);
     color: #fff;
 }
 #root {
     width: 100%;
     height: 100vh;
-    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: auto;
     position: relative;
+}
+
+/* Page Layout */
+.page-container {
+    display: flex;
+    width: 100%;
+    overflow: auto;
+    padding: 20px;
+    height: 100vh;
+    box-sizing: border-box;
+    gap: 20px;
+}
+
+
+.main-content {
+    flex: 1;
+    display: flex;
+    height: 750px;
+    justify-content: center;
+    align-items: flex-start;
+    min-width: 0; /* Prevents flex item from overflowing */
+}
+
+.chat-section {
+    width: 300px;
+    margin-top: 20px;
 }
 
 /* Lobby Styles */
@@ -29,16 +61,30 @@ body {
 }
 
 .lobby-container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-    font-family: Arial, sans-serif;
+    background-color: rgba(37, 37, 37, 0.95);
+    padding: 60px;
+    border-radius: 15px;
+    text-align: center;
+    width: 100%;
+    width: 800px;
+    min-height: 400px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
 }
 
 .lobby-container h1 {
-    text-align: center;
-    color: #333;
-    margin-bottom: 30px;
+    font-family: 'Press Start 2P', cursive;
+    color: #27fd2e9d;
+    font-size: 3em;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.player-count, .level-btn {
+    color: #c2c2c2;
+    font-family: 'Orbitron', sans-serif;
+}
+
+.level-btn:hover {
+    background-color: #07ce0031;
 }
 
 .error-message {
@@ -62,7 +108,11 @@ body {
 }
 
 .join-section {
-    margin-bottom: 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    max-width: 500px;
+    margin: 0 auto;
 }
 
 .join-form {
@@ -72,27 +122,56 @@ body {
     align-items: center;
 }
 
-#nicknameInput {
+#nickname {
+    font-family: 'Orbitron', sans-serif;
     padding: 10px;
     font-size: 16px;
-    border: 2px solid #ddd;
-    border-radius: 4px;
-    width: 200px;
+    border: 2px solid #14f50c;
+    border-radius: 10px;
+    width: 80%;
 }
 
 #joinBtn {
-    padding: 10px 20px;
-    font-size: 16px;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    padding: 15px 30px;
+    font-size: 18px;
     background-color: #4CAF50;
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: 10px;
     cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    width: 65%;
+    animation: beatButton 1.5s ease-in-out infinite;
 }
 
 #joinBtn:disabled {
     background-color: #cccccc;
     cursor: not-allowed;
+}
+
+#joinBtn:hover {
+    background-color: #45a049;
+    animation: none;
+    transform: scale(1.05);
+}
+
+@keyframes beatButton {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+#joinBtn:active {
+    transform: translateY(0);
 }
 
 .game-info {
@@ -115,7 +194,7 @@ body {
 }
 
 .level-selection {
-    margin-bottom: 30px;
+    margin-bottom: 20px;
 }
 
 .level-buttons {
@@ -146,6 +225,7 @@ body {
 
 .level-btn:disabled {
     background-color: #cccccc;
+    color: white;
     cursor: not-allowed;
 }
 
@@ -159,6 +239,7 @@ body {
     width: 100%;
     padding: 15px;
     font-size: 18px;
+    font-family: 'Orbitron', sans-serif;
     background-color: #4CAF50;
     color: white;
     border: none;
@@ -188,6 +269,7 @@ body {
     padding: 10px;
     background-color: #333;
     border-radius: 8px;
+    border: #14f50c;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
@@ -199,6 +281,7 @@ body {
     background-color: #222;
     padding: 10px;
     border-radius: 4px;
+    border: #14f50c;
 }
 
 .cell {
@@ -214,6 +297,17 @@ body {
 .cell[class*="player-"] {
     position: relative;
     overflow: visible;
+}
+
+.player-1.player-character {
+    background-color: #2196F3;
+}
+
+.player-2 {
+    background-color: #f33a21;
+}
+.player-2 .player-character {
+    background-color: #f33a21;
 }
 
 .player-character {
@@ -235,7 +329,7 @@ body {
 }
 
 .cell.block {
-    background-color: #7f8c8d;
+    background-color: #a8bec0;
     border: 1px solid #95a5a6;
 }
 
@@ -272,32 +366,84 @@ body {
 
 /* Chat Styles */
 .chat {
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
-    width: 300px;
     background: rgba(20, 20, 20, 0.95);
     color: #fff;
+    height: 600px;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    transition: all 0.3s ease;
-    z-index: 1000;
-}
-
-.chat.minimized {
-    height: 40px !important;
-    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .chat-header {
+    padding: 10px;
+    background: rgba(40, 40, 40, 0.95);
+    border-radius: 8px 8px 0 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 12px;
-    background: rgba(40, 40, 40, 0.95);
-    border-radius: 8px 8px 0 0;
-    cursor: move;
-    user-select: none;
+}
+
+.chat-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    background-color: #ffffff;
+    padding: 12px;
+}
+
+.chat-input-container {
+    padding: 10px;
+    background: rgba(30, 30, 30, 0.95);
+    border-radius: 0 0 8px 8px;
+    display: flex;
+    gap: 8px;
+}
+
+#chat-input {
+    flex: 1;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background-color: #cccccc;
+    color: white;
+}
+
+#send-btn {
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: none;
+    background: #4CAF50;
+    color: white;
+    cursor: pointer;
+}
+
+/* Ensure content is visible */
+.level-selection, .players-container, .lobby-controls {
+    margin-bottom: 20px;
+}
+
+/* Minimize button */
+.minimize-btn {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 5px 10px;
+}
+
+.chat.minimized {
+    height: auto;
+}
+
+.chat.minimized .chat-body {
+    display: none;
 }
 
 .chat-title {
@@ -329,9 +475,9 @@ body {
 }
 
 .chat-body {
+    height: 300px;
     display: flex;
     flex-direction: column;
-    height: 300px;
 }
 
 #chat-messages {
@@ -408,7 +554,7 @@ body {
 }
 
 #send-btn {
-    background: #2196F3;
+    background: #0f5c00;
     color: white;
     border: none;
     border-radius: 4px;
@@ -418,7 +564,7 @@ body {
 }
 
 #send-btn:hover {
-    background: #1976D2;
+    background: #00920ca8;
 }
 
 @keyframes fadeIn {
@@ -635,4 +781,36 @@ body {
 .player-name {
     color: #4CAF50;
     font-weight: bold;
+}
+
+/* Animations */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -40%);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%);
+    }
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }

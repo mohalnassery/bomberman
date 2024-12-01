@@ -48,7 +48,7 @@ export class Player {
         this.serverPosition = { ...this.position }; // Server's last known position
         this.targetPosition = { ...this.position };  // Position to interpolate towards
         this.lives = 3;
-        this.speed = 1;
+        this.speed = 4;
         this.maxBombs = 1;
         this.activeBombs = 0;
         this.flameRange = 1;
@@ -66,9 +66,18 @@ export class Player {
         this.element = null;
         this.createPlayerElement();
 
+        // Initialize movement properties
+        this.keysPressed = {};
+        this.speed = 4;
+        this.isMoving = false;
+        
+        // Bind methods
+        this.handleKeyDown = this.handleKeyDown.bind(this);
+        this.handleKeyUp = this.handleKeyUp.bind(this);
+
+        // Set up controls for local player
         if (this.isLocal) {
-            this.boundKeyDown = this.handleKeyDown.bind(this);
-            this.boundKeyUp = this.handleKeyUp.bind(this);
+            console.log('Setting up controls for local player:', this.id);
             this.initControls();
         }
     }
@@ -96,24 +105,76 @@ export class Player {
     }
 
     initControls() {
-        document.addEventListener('keydown', this.boundKeyDown);
-        document.addEventListener('keyup', this.boundKeyUp);
+        document.addEventListener('keydown', this.handleKeyDown);
+        document.addEventListener('keyup', this.handleKeyUp);
+        console.log('Keyboard controls initialized');
     }
-    
+
+    update(deltaTime) {
+        if (this.isDead || !this.isLocal) return;
+
+        const oldPosition = { ...this.position };
+        let moved = false;
+        
+        // Calculate movement based on pressed keys
+        const moveSpeed = this.speed * deltaTime;
+
+        if (this.keysPressed['ArrowUp'] || this.keysPressed['w']) {
+            this.position.y -= moveSpeed;
+            moved = true;
+        }
+        if (this.keysPressed['ArrowDown'] || this.keysPressed['s']) {
+            this.position.y += moveSpeed;
+            moved = true;
+        }
+        if (this.keysPressed['ArrowLeft'] || this.keysPressed['a']) {
+            this.position.x -= moveSpeed;
+            moved = true;
+        }
+        if (this.keysPressed['ArrowRight'] || this.keysPressed['d']) {
+            this.position.x += moveSpeed;
+            moved = true;
+        }
+
+        // If moved and no collision, update position
+        if (moved && !this.gameMap.checkCollision(this.position.x, this.position.y, this.id)) {
+            // Update visual position immediately for local player
+            if (this.element) {
+                this.element.style.transform = 
+                    `translate(${this.position.x * 32}px, ${this.position.y * 32}px)`;
+            }
+            console.log(`Player ${this.id} moved to:`, this.position);
+        } else {
+            // Reset position if collision
+            this.position = oldPosition;
+        }
+    }
+
     handleKeyDown(event) {
+        if (!this.isLocal || this.isDead) return;
+        
         this.keysPressed[event.key] = true;
-        if (event.key === ' ' && !this.isDead) {
+        console.log('Key pressed:', event.key, 'Keys state:', this.keysPressed);
+        
+        // Handle bomb placement
+        if (event.key === ' ') {
             this.placeBomb();
         }
     }
-    
+
     handleKeyUp(event) {
+        if (!this.isLocal || this.isDead) return;
+        
         this.keysPressed[event.key] = false;
+        console.log('Key released:', event.key, 'Keys state:', this.keysPressed);
     }
-    
+
     destroy() {
-        document.removeEventListener('keydown', this.boundKeyDown);
-        document.removeEventListener('keyup', this.boundKeyUp);
+        if (this.isLocal) {
+            document.removeEventListener('keydown', this.handleKeyDown);
+            document.removeEventListener('keyup', this.handleKeyUp);
+            console.log('Removed keyboard controls');
+        }
     }
 
     setPosition(position) {
@@ -158,75 +219,27 @@ export class Player {
         );
     }
 
-    update(deltaTime) {
-        if (this.isDead) return;
-
-        const oldPosition = { ...this.position };
-        let moved = false;
-        const newPosition = { ...this.position };
-
-        // Calculate new position based on input
-        if (this.keysPressed['ArrowUp'] || this.keysPressed['w']) {
-            newPosition.y -= this.speed * deltaTime;
-            moved = true;
-        }
-        if (this.keysPressed['ArrowDown'] || this.keysPressed['s']) {
-            newPosition.y += this.speed * deltaTime;
-            moved = true;
-        }
-        if (this.keysPressed['ArrowLeft'] || this.keysPressed['a']) {
-            newPosition.x -= this.speed * deltaTime;
-            moved = true;
-        }
-        if (this.keysPressed['ArrowRight'] || this.keysPressed['d']) {
-            newPosition.x += this.speed * deltaTime;
-            moved = true;
-        }
-
-        // Test collision with new position
-        const originalPosition = { ...this.position };
-        this.position = newPosition;
-        
-        if (this.checkCollision()) {
-            this.position = originalPosition;
-            moved = false;
-        }
-
-        // Interpolate towards server position when receiving updates
-        if (!moved) {
-            const dx = this.targetPosition.x - this.position.x;
-            const dy = this.targetPosition.y - this.position.y;
-            if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
-                this.position.x += dx * this.interpolationFactor;
-                this.position.y += dy * this.interpolationFactor;
-                moved = true;
-            }
-        }
-
-        // Send position updates to server with throttling
-        if (moved && Date.now() - this.lastServerUpdate >= this.updateThrottleMs) {
-            this.lastServerUpdate = Date.now();
-            webSocket.send('playerMove', {
-                id: this.id,
-                position: this.position,
-                timestamp: Date.now()
-            });
-        }
-
-        this.isMoving = moved;
-    }
-
     // Method to handle server position updates
     updateServerPosition(serverPos, timestamp) {
         // Update target position for interpolation
         this.targetPosition = { ...serverPos };
         this.serverPosition = { ...serverPos };
         
-        // If the difference is too large, snap to the server position
-        const dx = this.targetPosition.x - this.position.x;
-        const dy = this.targetPosition.y - this.position.y;
+        // // If the difference is too large, snap to the server position
+        // const dx = this.targetPosition.x - this.position.x;
+        // const dy = this.targetPosition.y - this.position.y;
+        // if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+        //     this.position = { ...serverPos };
+        // }
+
+                // If difference is too large, snap to server position
+        const dx = serverPos.x - this.position.x;
+        const dy = serverPos.y - this.position.y;
         if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
             this.position = { ...serverPos };
+        } else {
+            // Otherwise smoothly interpolate
+            this.targetPosition = { ...serverPos };
         }
     }
 
@@ -487,23 +500,13 @@ export class Player {
         });
     }
 
-    updatePosition(x, y) {
-        const oldCell = this.gameMap.grid[Math.floor(this.position.y)][Math.floor(this.position.x)];
-        if (oldCell) {
-            oldCell.hasPlayer = false;
+    updatePosition(position) {
+        this.position = position;
+        if (this.element) {
+            this.element.style.transform = 
+                `translate(${position.x * 32}px, ${position.y * 32}px)`;
         }
-
-        this.position.x = x;
-        this.position.y = y;
-        
-        const newCell = this.gameMap.grid[Math.floor(y)][Math.floor(x)];
-        if (newCell) {
-            newCell.hasPlayer = true;
-        }
-
-        // Update server position
-        this.serverPosition = { x, y };
-        this.targetPosition = { x, y };
+        console.log(`Updated position for player ${this.id} to:`, position);
     }
 
     incrementScore(points = 1) {
