@@ -18,7 +18,6 @@ function getLocalIP() {
 class GameServer {
     constructor(port = 8080) {
         this.port = port;
-        this.players = new Map();
         this.gameState = {
             players: new Map(),
             readyPlayers: new Set(),
@@ -447,7 +446,7 @@ class GameServer {
         });
 
         // Send current game state to new player
-        this.sendGameState(ws);
+        //this.sendGameState(ws);
     }
 
     handlePlayerReady(ws, data) {
@@ -542,39 +541,31 @@ class GameServer {
         });
     }
 
-    getSerializableGameState() {
-        return {
-            players: Array.from(this.gameState.players.entries()).map(([id, player]) => ({
-                id,
-                ...player,
-                position: { ...player.position }
-            })),
-            bombs: Array.from(this.gameState.bombs.entries()).map(([id, bomb]) => ({
-                id,
-                ...bomb,
-                position: { ...bomb.position }
-            })),
-            powerUps: Array.from(this.gameState.powerUps.entries()).map(([key, powerUp]) => ({
-                key,
-                ...powerUp,
-                position: { ...powerUp.position }
-            })),
-            blocks: Array.from(this.gameState.blocks),
-            gameStatus: this.gameState.gameStatus,
-            selectedLevel: this.gameState.selectedLevel,
-            timestamp: Date.now(),
-            grid: this.gameState.grid,
-            level: this.gameState.level
-        };
-    }
-
-    generatePlayerId() {
-        return Math.floor(Math.random() * 1000000).toString();
-    }
-
-    handlePlayerDisconnect(playerId) {
-        // Implement player disconnection logic here
-    }
+    //getSerializableGameState() {
+    //    return {
+    //        players: Array.from(this.gameState.players.entries()).map(([id, player]) => ({
+    //            id,
+    //            ...player,
+    //            position: { ...player.position }
+    //        })),
+    //        bombs: Array.from(this.gameState.bombs.entries()).map(([id, bomb]) => ({
+    //            id,
+    //            ...bomb,
+    //            position: { ...bomb.position }
+    //        })),
+    //        powerUps: Array.from(this.gameState.powerUps.entries()).map(([key, powerUp]) => ({
+    //            key,
+    //            ...powerUp,
+    //            position: { ...powerUp.position }
+    //        })),
+    //        blocks: Array.from(this.gameState.blocks),
+    //        gameStatus: this.gameState.gameStatus,
+    //        selectedLevel: this.gameState.selectedLevel,
+    //        timestamp: Date.now(),
+    //        grid: this.gameState.grid,
+    //        level: this.gameState.level
+    //    };
+    //}
 
     broadcastGameState() {
         const gameState = {
@@ -655,15 +646,15 @@ class GameServer {
         player.bombsPlaced++;
     }
 
-    getStartPosition(playerIndex) {
-        const positions = [
-            { x: 1, y: 1 },
-            { x: 13, y: 1 },
-            { x: 1, y: 11 },
-            { x: 13, y: 11 }
-        ];
-        return positions[playerIndex] || positions[0];
-    }
+    //getStartPosition(playerIndex) {
+    //    const positions = [
+    //        { x: 1, y: 1 },
+    //        { x: 13, y: 1 },
+    //        { x: 1, y: 11 },
+    //        { x: 13, y: 11 }
+    //    ];
+    //    return positions[playerIndex] || positions[0];
+    //}
 
     broadcastMessage(message) {
         this.wss.clients.forEach(client => {
@@ -844,10 +835,11 @@ class GameServer {
                                 });
                             }
                             break;
-                        case '1':
-                        case '2':
-                        case '3':
-                        case '4':
+                        //case '1':
+                        //case '2':
+                        //case '3':
+                        //case '4':
+                        default:
                             // Keep track of spawn positions
                             this.gameState.grid[y][x].type = 'empty';
                             break;
