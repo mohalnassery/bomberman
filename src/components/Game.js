@@ -60,8 +60,15 @@ export class Game extends Component {
         // Load map only once
         if (data.selectedLevel && !this.mapLoaded) {
             console.log('Loading level:', data.selectedLevel);
-            this.map.loadLevel(data.selectedLevel);
-            this.mapLoaded = true;
+            this.map.loadLevel(data.selectedLevel)
+                .then(() => {
+                    this.mapLoaded = true;
+                    console.log('Map loaded successfully');
+                    this.render(); // Force render after map loads
+                })
+                .catch(error => {
+                    console.error('Failed to load map:', error);
+                });
         }
         
         // Update all players from game state
@@ -71,19 +78,22 @@ export class Game extends Component {
                 
                 if (!player) {
                     // Create new player if doesn't exist
+                    const position = playerData.position || { x: 0, y: 0 }; // Provide default position
                     player = new Player({
                         id: playerData.id,
                         nickname: playerData.nickname,
                         isLocal: playerData.id === this.localPlayerId,
                         gameMap: this.map,
-                        position: playerData.position
+                        position: position
                     });
                     this.players.set(playerData.id, player);
                     this.map.addPlayer(player);
                 }
 
-                // Update player position
-                player.updatePosition(playerData.position);
+                // Only update position if valid position data exists
+                if (playerData.position && typeof playerData.position.x === 'number' && typeof playerData.position.y === 'number') {
+                    player.updatePosition(playerData.position);
+                }
             });
         }
     }
