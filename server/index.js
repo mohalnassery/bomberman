@@ -22,14 +22,11 @@ class GameServer {
             players: new Map(),
             readyPlayers: new Set(),
             bombs: new Map(),
-            powerUps: new Map(),
-            blocks: new Set(),
             levelVotes: new Map(),
             selectedLevel: null,
             gameStatus: 'waiting',
             lastUpdateTime: Date.now(),
-            grid: [],
-            level: null
+            grid: []
         };
         this.tickRate = 60;
         this.tickInterval = null;
@@ -51,6 +48,32 @@ class GameServer {
         console.log(`- Network: ws://${localIP}:${this.port}`);
 
         this.wss.on('connection', this.handleConnection.bind(this));
+    }
+
+
+    // -- GAME LOOP FUNCTIONS -- 
+
+    startGame() {
+        // Select the winning level if not already selected
+        if (!this.gameState.selectedLevel) {
+            this.gameState.selectedLevel = this.selectWinningLevel();
+        }
+        
+        console.log('Starting game with selected level:', this.gameState.selectedLevel);
+        
+        this.gameState.gameStatus = 'running';
+        
+        // Initialize game state with selected level
+        this.initializeLevel(this.gameState.selectedLevel);
+        
+        // Broadcast game start with selected level
+        this.broadcast('gameStarted', {
+            level: this.gameState.selectedLevel,
+            playerCount: this.gameState.players.size,
+            timestamp: Date.now()
+        });
+
+        this.startGameLoop();
     }
 
     startGameLoop() {
@@ -84,237 +107,12 @@ class GameServer {
                 this.handleBombExplosion(bombId, bomb);
             }
         }
-
-        // Process player movements and reconcile positions
-        for (const [playerId, player] of this.gameState.players) {
-            if (player.pendingMoves && player.pendingMoves.length > 0) {
-                // Process all pending moves in order
-                while (player.pendingMoves.length > 0) {
-                    const move = player.pendingMoves.shift();
-                    this.validateAndUpdatePlayerPosition(playerId, move);
-                }
-            }
-        }
-
-        // Check win conditions
-        if (this.gameState.gameStatus === 'running') {
-            const alivePlayers = Array.from(this.gameState.players.values())
-                .filter(p => !p.isDead);
-            
-            if (alivePlayers.length <= 1) {
-                const winner = alivePlayers[0];
-                this.endGame(winner);
-            }
-        }
+        // Removed check win condition because that is already being checked after explosions
     }
 
-    validateAndUpdatePlayerPosition(playerId, moveData) {
-        const player = this.gameState.players.get(playerId);
-        if (!player) return;
-
-        const { position, timestamp } = moveData;
-        
-        // Basic validation of movement
-        const dx = position.x - player.position.x;
-        const dy = position.y - player.position.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        // Check if movement is within reasonable bounds
-        const maxAllowedDistance = player.speed * (Date.now() - timestamp) / 1000 * 1.5; // 50% tolerance
-        
-        if (distance <= maxAllowedDistance) {
-            // Update position if valid
-            player.position = position;
-            player.lastMoveTimestamp = timestamp;
-        } else {
-            // If invalid, force position update to client
-            this.broadcastToPlayer(playerId, 'forcePosition', {
-                position: player.position,
-                timestamp: Date.now()
-            });
-        }
-    }
-
-    handlePlayerMove(ws, data) {
-        const playerId = ws.playerId;
-        if (!playerId) {
-            console.log('No playerId found for movement');
-            return;
-        }
-
-        const player = this.gameState.players.get(playerId);
-        if (!player) {
-            console.log('No player found for movement');
-            return;
-        }
-
-        // Update player position in server's game state
-        player.position = data.position;
-        console.log(`Server: Player ${playerId} moved to:`, data.position);
-
-        // Create the message once
-        const moveMessage = JSON.stringify({
-            type: 'playerMove',
-            payload: {
-                playerId: playerId,
-                position: data.position,
-                timestamp: Date.now()
-            }
-        });
-
-        // Log the message we're about to broadcast
-        console.log('Broadcasting message:', moveMessage);
-
-        // Broadcast to ALL clients including sender
-        this.wss.clients.forEach(client => {
-            if (client.readyState === 1) {
-                client.send(moveMessage);
-                console.log(`Sent movement update to client ${client.playerId}`);
-            }
-        });
-    }
-
-
-    handleBombExplosion(bombId, bomb) {
-        const affectedPositions = this.calculateExplosionArea(bomb.position, bomb.range);
-        const chainReactionBombs = new Set();
-        const destroyedBlocks = new Set();
-        const affectedPlayers = new Set();
-        
-        // Process each position in the explosion range
-        affectedPositions.forEach(pos => {
-            const key = `${pos.x},${pos.y}`;
-            
-            // Check for blocks
-            if (this.gameState.blocks.has(key)) {
-                this.gameState.blocks.delete(key);
-                destroyedBlocks.add(key);
-                
-                // Chance to spawn power-up
-                if (Math.random() < 0.3) {
-                    const powerUpType = this.getRandomPowerUpType();
-                    this.gameState.powerUps.set(key, {
-                        type: powerUpType,
-                        position: pos
-                    });
-                }
-            }
-            
-            // Check for chain reactions with other bombs
-            const bombAtPosition = Array.from(this.gameState.bombs.values())
-                .find(b => Math.floor(b.position.x) === pos.x && Math.floor(b.position.y) === pos.y);
-            
-            if (bombAtPosition && bombAtPosition.id !== bombId) {
-                chainReactionBombs.add(bombAtPosition.id);
-            }
-            
-            // Check for affected players
-            this.gameState.players.forEach((player, playerId) => {
-                if (player.isDead) return;
-                
-                const playerX = Math.floor(player.position.x);
-                const playerY = Math.floor(player.position.y);
-                
-                if (playerX === pos.x && playerY === pos.y) {
-                    affectedPlayers.add(playerId);
-                }
-            });
-        });
-        
-        // Handle player damage
-        affectedPlayers.forEach(playerId => {
-            const player = this.gameState.players.get(playerId);
-            if (player) {
-                player.lives--;
-                if (player.lives <= 0) {
-                    player.isDead = true;
-                    if (bomb.ownerId !== playerId) {
-                        const killer = this.gameState.players.get(bomb.ownerId);
-                        if (killer) {
-                            killer.killCount++;
-                        }
-                    }
-                }
-            }
-        });
-
-        // Remove the exploded bomb
-        this.gameState.bombs.delete(bombId);
-        
-        // Broadcast explosion event
-        this.broadcast('bombExplosion', {
-            bombId,
-            affectedPositions,
-            destroyedBlocks: Array.from(destroyedBlocks),
-            affectedPlayers: Array.from(affectedPlayers),
-            chainReaction: Array.from(chainReactionBombs),
-            timestamp: Date.now()
-        });
-
-        // Trigger chain reactions
-        if (chainReactionBombs.size > 0) {
-            setTimeout(() => {
-                chainReactionBombs.forEach(chainBombId => {
-                    const chainBomb = this.gameState.bombs.get(chainBombId);
-                    if (chainBomb) {
-                        this.handleBombExplosion(chainBombId, chainBomb);
-                    }
-                });
-            }, 100);
-        }
-
-        // Check game over condition
-        this.checkGameOver();
-    }
-
-    getRandomPowerUpType() {
-        const types = ['bomb', 'flame', 'speed'];
-        return types[Math.floor(Math.random() * types.length)];
-    }
-
-    handlePowerUpCollection(playerId, powerUpKey) {
-        const player = this.gameState.players.get(playerId);
-        const powerUp = this.gameState.powerUps.get(powerUpKey);
-        
-        if (!player || !powerUp || player.isDead) return;
-        
-        // Apply power-up effect
-        switch (powerUp.type) {
-            case 'bomb':
-                player.maxBombs = Math.min(player.maxBombs + 1, 8);
-                break;
-            case 'flame':
-                player.flameRange = Math.min(player.flameRange + 1, 8);
-                break;
-            case 'speed':
-                player.speed = Math.min(player.speed + 0.2, 2.5);
-                break;
-        }
-        
-        // Update statistics
-        player.powerUpsCollected++;
-        
-        // Remove power-up from game state
-        this.gameState.powerUps.delete(powerUpKey);
-        
-        // Broadcast power-up collection
-        this.broadcast('powerUpCollected', {
-            playerId,
-            powerUpKey,
-            type: powerUp.type,
-            stats: {
-                maxBombs: player.maxBombs,
-                flameRange: player.flameRange,
-                speed: player.speed,
-                powerUpsCollected: player.powerUpsCollected
-            },
-            timestamp: Date.now()
-        });
-    }
-
+    
     checkGameOver() {
         if (this.gameState.gameStatus !== 'running') return;
-
         const alivePlayers = Array.from(this.gameState.players.values())
             .filter(p => !p.isDead);
         
@@ -349,6 +147,180 @@ class GameServer {
         });
     }
 
+    // -- GAME ACTION HANDLERS --
+
+    // recieve move request and shares it with the rest
+    handlePlayerMove(ws, data) {
+        const playerId = ws.playerId;
+        if (!playerId) {
+            console.log('No playerId found for movement');
+            return;
+        }
+
+        const player = this.gameState.players.get(playerId);
+        if (!player) {
+            console.log('No player found for movement');
+            return;
+        }
+
+        // Update player position in server's game state
+        player.position = data.position;
+        console.log(`Server: Player ${playerId} moved to:`, data.position);
+
+        // Broadcast to ALL clients including sender
+        this.broadcast('playerMove', {
+            playerId: playerId,
+            position: data.position,
+            timestamp: Date.now()
+        })
+    }
+
+    handleBombPlacement(playerId, data) {
+        const player = this.gameState.players.get(playerId);
+        if (!player) return;
+
+        const bomb = {
+            id: Date.now(),
+            position: data.position,
+            ownerId: player.id,
+            range: player.powerUps.flames,
+            timeRemaining: 3
+        };
+
+        this.gameState.bombs.set(bomb.id, bomb);
+        this.gameState.grid[bomb.position.y,bomb.position.x].bomb = bomb
+
+        player.bombsPlaced++;
+
+        // Broadcast bomb placement to all clients
+        this.broadcast('bombPlaced', {bomb});
+    }
+
+    handleBombExplosion(bombId, bomb) {
+        const affectedPositions = this.calculateExplosionArea(bomb.position, bomb.range);
+        const chainReactionBombs = new Set();
+        const destroyedBlocks = new Set();
+        const affectedPlayers = new Set();
+        
+        // Process each position in the explosion range
+        affectedPositions.forEach(pos => {
+            
+            // Check for blocks
+            if (this.gameState.grid[pos.y][pos.x].type === "block") {
+                destroyedBlocks.add(`${pos.x},${pos.y}`);
+                if (this.gameState.grid[pos.y][pos.x].powerUp) {
+                    this.gameState.grid[pos.y][pos.x].type = "powerup"
+                } else {
+                    this.gameState.grid[pos.y][pos.x].type = "empty"
+                }
+            }
+            
+            // Check for chain reactions with other bombs
+            const bombAtPosition = this.gameState.grid[pos.y][pos.x].bomb;
+            if (bombAtPosition) {
+                chainReactionBombs.add(bombAtPosition.id);
+            }
+            
+            // Maybe we can also keep track of players in the grid? might be overcomplicating other stuff by doing that though
+            // Check for affected players
+            this.gameState.players.forEach((player, playerId) => {
+                if (player.isDead) return;
+                
+                const playerX = Math.floor(player.position.x);
+                const playerY = Math.floor(player.position.y);
+                
+                if (playerX === pos.x && playerY === pos.y) {
+                    affectedPlayers.add(playerId);
+                    player.lives--;
+                    if (player.lives <= 0) {
+                        player.isDead = true;
+                        if (bomb.ownerId !== playerId) {
+                            const killer = this.gameState.players.get(bomb.ownerId);
+                            if (killer) {
+                                killer.killCount++;
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+        // Remove the exploded bomb
+        this.gameState.grid[bomb.position.y][bomb.position.x].bomb = null
+        this.gameState.bombs.delete(bombId);
+        
+        // Broadcast explosion event
+        this.broadcast('bombExplosion', {
+            bombId,
+            affectedPositions,
+            destroyedBlocks: Array.from(destroyedBlocks),
+            affectedPlayers: Array.from(affectedPlayers),
+            chainReaction: Array.from(chainReactionBombs),
+            timestamp: Date.now()
+        });
+
+        // Trigger chain reactions
+        if (chainReactionBombs.size > 0) {
+            setTimeout(() => {
+                chainReactionBombs.forEach(chainBombId => {
+                    const chainBomb = this.gameState.bombs.get(chainBombId);
+                    if (chainBomb) {
+                        this.handleBombExplosion(chainBombId, chainBomb);
+                    }
+                });
+            }, 100);
+        }
+
+        // Check game over condition
+        this.checkGameOver();
+    }
+
+    handlePowerUpCollection(playerId, powerUpX, powerUpY) {
+        const player = this.gameState.players.get(playerId);
+        const powerUpCell = this.gameState.grid[powerUpY][powerUpX]
+        
+        if (!player || player.isDead || powerUpCell.type !== "powerup" || !powerUpCell.powerUp) return;
+        
+        // Apply power-up effect
+        switch (powerUpCell.powerUp) {
+            case 'bomb':
+                player.maxBombs = Math.min(player.maxBombs + 1, 8);
+                break;
+            case 'flame':
+                player.flameRange = Math.min(player.flameRange + 1, 8);
+                break;
+            case 'speed':
+                player.speed = Math.min(player.speed + 0.2, 2.5);
+                break;
+        }
+        
+        // Update statistics
+        player.powerUpsCollected++;
+        
+        // Broadcast power-up collection
+        this.broadcast('powerUpCollected', {
+            playerId,
+            position: {
+                x: powerUpX,
+                y: powerUpY
+            },
+            type: powerUpCell.powerUp,
+            stats: {
+                maxBombs: player.maxBombs,
+                flameRange: player.flameRange,
+                speed: player.speed,
+                powerUpsCollected: player.powerUpsCollected
+            },
+            timestamp: Date.now()
+        });
+
+        // Remove power-up from game state
+        this.gameState.grid[powerUpY][powerUpX] = {
+            type: "empty",
+            powerUp: null
+        }
+    }
+
     calculateExplosionArea(position, range) {
         const positions = [];
         const directions = [
@@ -376,8 +348,7 @@ class GameServer {
                 positions.push({ x, y });
                 
                 // Stop if we hit a wall
-                const key = `${x},${y}`;
-                if (this.gameState.blocks.has(key)) {
+                if (this.gameState.grid[y][x] === "block" || this.gameState.grid[y][x] === "wall") {
                     break;
                 }
             }
@@ -385,6 +356,8 @@ class GameServer {
         
         return positions;
     }
+
+    // -- WEBSOCKET ASSIGNMENTS ---
 
     handleConnection(ws) {
         console.log('New client connected');
@@ -410,7 +383,7 @@ class GameServer {
                         this.handlePlayerMove(ws, data.payload);
                         break;
                     case 'requestSync':
-                        this.handleSyncRequest(ws, data.payload);
+                        this.sendGameState(ws);
                         break;
                 }
             } catch (error) {
@@ -422,6 +395,54 @@ class GameServer {
             this.handlePlayerDisconnect(ws);
         });
     }
+    
+    broadcast(type, payload, excludePlayerId = null) {
+        const message = JSON.stringify({ type, payload });
+        this.wss.clients.forEach(client => {
+            if (client.readyState === 1 && (!excludePlayerId || client.playerId !== excludePlayerId)) {
+                client.send(message);
+            }
+        });
+    }
+
+    broadcastGameState() {
+        const gameState = {
+            players: Array.from(this.gameState.players.values()),
+            readyPlayers: Array.from(this.gameState.readyPlayers),
+            levelVotes: Object.fromEntries(this.gameState.levelVotes),
+            gameStatus: this.gameState.gameStatus,
+            selectedLevel: this.gameState.selectedLevel,
+            grid: this.gameState.grid
+        };
+
+        this.broadcast('gameState', gameState);
+    }
+    
+    // we can probably replace this with broadcastState, revisit once the starting game stuff is clear to me
+    sendGameState(ws) {
+        // Ensure we have a selected level from votes if not already set
+        if (!this.gameState.selectedLevel && this.gameState.levelVotes.size > 0) {
+            this.gameState.selectedLevel = this.selectWinningLevel();
+        }
+
+        const gameState = {
+            players: Array.from(this.gameState.players.values()),
+            readyPlayers: Array.from(this.gameState.readyPlayers),
+            levelVotes: Object.fromEntries(this.gameState.levelVotes),
+            gameStatus: this.gameState.gameStatus,
+            selectedLevel: this.gameState.selectedLevel,
+            grid: this.gameState.grid
+        };
+
+        console.log('Sending game state with level:', gameState.selectedLevel);
+
+        ws.send(JSON.stringify({
+            type: 'gameState',
+            payload: gameState
+        }));
+    }
+
+    // -- LOBBY LISTENERS -- 
 
     handlePlayerJoin(ws, data) {
         const { nickname, sessionId } = data;
@@ -437,18 +458,13 @@ class GameServer {
         this.gameState.players.set(sessionId, player);
         
         // Broadcast to all clients including new player
-        this.broadcastMessage({
-            type: 'playerJoined',
-            payload: {
+        this.broadcast('playerJoined', {
                 player,
                 playerCount: this.gameState.players.size
-            }
-        });
-
-        // Send current game state to new player
-        //this.sendGameState(ws);
+            });
     }
 
+    // CHECK PLAYER ID
     handlePlayerReady(ws, data) {
         const playerId = ws.playerId;
         if (!playerId) return;
@@ -473,44 +489,10 @@ class GameServer {
         player.ready = false;
         this.gameState.readyPlayers.delete(ws.playerId);
 
-        this.broadcastMessage({
-            type: 'playerUnready',
-            payload: {
+        this.broadcast('playerUnready', {
                 playerId: ws.playerId,
                 nickname: player.nickname
-            }
-        });
-    }
-
-    handleSyncRequest(ws, data) {
-        this.sendGameState(ws);
-    }
-
-    sendGameState(ws) {
-        // Ensure we have a selected level from votes if not already set
-        if (!this.gameState.selectedLevel && this.gameState.levelVotes.size > 0) {
-            this.gameState.selectedLevel = this.selectWinningLevel();
-        }
-
-        const gameState = {
-            players: Array.from(this.gameState.players.values()),
-            readyPlayers: Array.from(this.gameState.readyPlayers),
-            levelVotes: Object.fromEntries(this.gameState.levelVotes),
-            gameStatus: this.gameState.gameStatus,
-            selectedLevel: this.gameState.selectedLevel,
-            grid: this.gameState.grid,
-            blocks: Array.from(this.gameState.blocks).map(block => {
-                const [x, y] = block.split(',').map(Number);
-                return { x, y };
-            })
-        };
-
-        console.log('Sending game state with level:', gameState.selectedLevel);
-
-        ws.send(JSON.stringify({
-            type: 'gameState',
-            payload: gameState
-        }));
+            });
     }
 
     handlePlayerDisconnect(ws) {
@@ -522,146 +504,11 @@ class GameServer {
             this.gameState.readyPlayers.delete(ws.playerId);
             this.gameState.levelVotes.delete(ws.playerId);
 
-            this.broadcastMessage({
-                type: 'playerLeave',
-                payload: {
+            this.broadcast('playerLeave',{
                     playerId: ws.playerId,
                     playerCount: this.gameState.players.size
-                }
-            });
-        }
-    }
-
-    broadcast(type, payload, excludePlayerId = null) {
-        const message = JSON.stringify({ type, payload });
-        this.wss.clients.forEach(client => {
-            if (client.readyState === 1 && (!excludePlayerId || client.playerId !== excludePlayerId)) {
-                client.send(message);
-            }
-        });
-    }
-
-    //getSerializableGameState() {
-    //    return {
-    //        players: Array.from(this.gameState.players.entries()).map(([id, player]) => ({
-    //            id,
-    //            ...player,
-    //            position: { ...player.position }
-    //        })),
-    //        bombs: Array.from(this.gameState.bombs.entries()).map(([id, bomb]) => ({
-    //            id,
-    //            ...bomb,
-    //            position: { ...bomb.position }
-    //        })),
-    //        powerUps: Array.from(this.gameState.powerUps.entries()).map(([key, powerUp]) => ({
-    //            key,
-    //            ...powerUp,
-    //            position: { ...powerUp.position }
-    //        })),
-    //        blocks: Array.from(this.gameState.blocks),
-    //        gameStatus: this.gameState.gameStatus,
-    //        selectedLevel: this.gameState.selectedLevel,
-    //        timestamp: Date.now(),
-    //        grid: this.gameState.grid,
-    //        level: this.gameState.level
-    //    };
-    //}
-
-    broadcastGameState() {
-        const gameState = {
-            players: Array.from(this.gameState.players.values()),
-            readyPlayers: Array.from(this.gameState.readyPlayers),
-            levelVotes: Object.fromEntries(this.gameState.levelVotes),
-            gameStatus: this.gameState.gameStatus,
-            selectedLevel: this.gameState.selectedLevel,
-            grid: this.gameState.grid,
-            level: this.gameState.level
-        };
-
-        this.broadcastMessage({
-            type: 'gameState',
-            payload: gameState
-        });
-    }
-
-    handleMessage(ws, data) {
-        const { type, payload } = data;
-        console.log('Handling message:', type, payload);
-
-        switch (type) {
-            case 'join':
-                this.handlePlayerJoin(ws, payload);
-                break;
-            case 'ready':
-                this.handlePlayerReady(ws, payload);
-                break;
-            case 'unready':
-                this.handlePlayerUnready(ws, payload);
-                break;
-            case 'voteLevel':
-                this.handleLevelVote(ws, payload);
-                break;
-            case 'move':
-                this.handlePlayerMove(ws, payload);
-                break;
-            case 'bomb':
-                this.handleBombPlacement(ws.playerId, payload);
-                break;
-            case 'chat':
-                this.broadcastMessage({
-                    type: 'chat',
-                    payload: {
-                        message: payload.message,
-                        player: this.gameState.players.get(ws.playerId)?.nickname
-                    }
                 });
-                break;
-            default:
-                console.warn('Unknown message type:', type);
         }
-    }
-
-    handleBombPlacement(playerId, data) {
-        const player = this.gameState.players.get(playerId);
-        if (!player) return;
-
-        const bomb = {
-            id: Date.now(),
-            position: data.position,
-            ownerId: player.id,
-            range: player.powerUps.flames,
-            timeRemaining: 3
-        };
-
-        this.gameState.bombs.set(bomb.id, bomb);
-
-        // Broadcast bomb placement to all clients
-        this.broadcastMessage({
-            type: 'bombPlaced',
-            payload: {
-                bomb
-            }
-        });
-
-        player.bombsPlaced++;
-    }
-
-    //getStartPosition(playerIndex) {
-    //    const positions = [
-    //        { x: 1, y: 1 },
-    //        { x: 13, y: 1 },
-    //        { x: 1, y: 11 },
-    //        { x: 13, y: 11 }
-    //    ];
-    //    return positions[playerIndex] || positions[0];
-    //}
-
-    broadcastMessage(message) {
-        this.wss.clients.forEach(client => {
-            if (client.readyState === 1) { 
-                client.send(JSON.stringify(message));
-            }
-        });
     }
 
     handleLevelVote(ws, data) {
@@ -770,29 +617,6 @@ class GameServer {
         }
     }
 
-    startGame() {
-        // Select the winning level if not already selected
-        if (!this.gameState.selectedLevel) {
-            this.gameState.selectedLevel = this.selectWinningLevel();
-        }
-        
-        console.log('Starting game with selected level:', this.gameState.selectedLevel);
-        
-        this.gameState.gameStatus = 'running';
-        
-        // Initialize game state with selected level
-        this.initializeLevel(this.gameState.selectedLevel);
-        
-        // Broadcast game start with selected level
-        this.broadcast('gameStarted', {
-            level: this.gameState.selectedLevel,
-            playerCount: this.gameState.players.size,
-            timestamp: Date.now()
-        });
-
-        this.startGameLoop();
-    }
-
     async initializeLevel(levelName) {
         try {
             // Read the level file
@@ -801,7 +625,6 @@ class GameServer {
             
             // Initialize grid
             this.gameState.grid = [];
-            this.gameState.blocks.clear();
             
             // Process level data
             const lines = levelData.split('\n')
@@ -825,20 +648,23 @@ class GameServer {
                             break;
                         case '-':
                             this.gameState.grid[y][x].type = 'block';
-                            this.gameState.blocks.add(`${x},${y}`);
                             // 20% chance of power-up under block
-                            if (Math.random() < 0.2) {
-                                const powerUpType = this.getRandomPowerUpType();
-                                this.gameState.powerUps.set(`${x},${y}`, {
-                                    type: powerUpType,
-                                    position: { x, y }
-                                });
+                            if (Math.random() < 0.3) {
+                                const types = ['bomb', 'flame', 'speed'];
+                                this.gameState.grid[y][x].powerUp = types[Math.floor(Math.random() * types.length)];
                             }
                             break;
-                        //case '1':
-                        //case '2':
-                        //case '3':
-                        //case '4':
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                            this.gameState.grid[y][x].playerStart = char;
+                            this.gameState.grid[y][x].type = 'empty';
+                            const playerId = parseInt(char)
+                            if (this.gameState.players.length <= playerId) {
+                                this.gameState.players[playerId - 1].position = {x,y}
+                            }
+                            break;
                         default:
                             // Keep track of spawn positions
                             this.gameState.grid[y][x].type = 'empty';
@@ -854,8 +680,6 @@ class GameServer {
             this.broadcast('levelLoaded', {
                 level: levelName,
                 grid: this.gameState.grid,
-                blocks: Array.from(this.gameState.blocks),
-                powerUps: Array.from(this.gameState.powerUps.entries()),
                 timestamp: Date.now()
             });
             
@@ -867,9 +691,7 @@ class GameServer {
     }
 
     generateDefaultMap() {
-        this.gameState.grid = [];
-        this.gameState.blocks.clear();
-        
+        this.gameState.grid = []
         for (let y = 0; y < this.mapHeight; y++) {
             this.gameState.grid[y] = [];
             for (let x = 0; x < this.mapWidth; x++) {
@@ -886,15 +708,6 @@ class GameServer {
         console.log('Server: Generated default map');
     }
 
-    broadcastToPlayer(playerId, type, payload) {
-        const message = JSON.stringify({ type, payload });
-        this.wss.clients.forEach(client => {
-            if (client.readyState === 1 && client.playerId === playerId) {
-                client.send(message);
-            }
-        });
-    }
-
     startGameCountdown() {
         if (this.gameState.gameStatus !== 'waiting') return;
         
@@ -907,10 +720,7 @@ class GameServer {
                 this.gameState.gameStatus = 'running';
                 this.broadcastGameState();
             } else {
-                this.broadcastMessage({
-                    type: 'gameStarting',
-                    payload: { countdown }
-                });
+                this.broadcast('gameStarting',{ countdown });
                 countdown--;
             }
         }, 1000);

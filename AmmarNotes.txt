@@ -1,4 +1,6 @@
 Hi, just went through the code and have a few notes:
+
+Server: 
 1. When the game is  on, we broadcast the game state every single frame. Isn't it better if we only broadcast when something new happens? (i.e. player starts moving, bomb is placed, etc.)
 	We could try to just have one ws package per frame with changes.
 2. The validateAndUpdatePlayerPosition validates on speed of the movement. I think this is redundant and instead we should include collision checks for the level walls on the server side.
@@ -8,15 +10,21 @@ Hi, just went through the code and have a few notes:
 5. Player disconnect does not work for me for some reason
 6. We should clearInterval of countDownInterval when another player joins.
 7. Why have both grid and block as seperate gamestate objects. grid can already control if a block is there or not, and powerups are stored in another variable.
-	Heck, just store powerUps as an attribute too the grid, and if it is null then we know there wasn't one in there.
-8. startgame has like 3 back to back broadcasts for each function. 
+	Heck, just store powerUps as an attribute to the grid, and if it is null then we know there wasn't one in there.
+8. startgame has 3 back to back broadcasts for each function. We should find a way to streamline it to just one
 9. we do NOT need to send the gamestate to a newly joined player.
 10. ...serializablegamestate?
 11. game cound start from both handlelevelvote and handleplayerready
+12. requestSync is never called
 
 Lobby:
 1. ..do we need to bind methods that already belong to this class?
 2. ... we arent really using the miniframework (ex. no createElement in the render function). Heck, render doesn't even have a return function
 
 Chat:
-1. Chat.js is not used??? 
+1. Chat.js is not used yet.
+
+Game:
+1. requestGameState is not something hangled by the server
+2. updateGameState is never used???
+

@@ -10,39 +10,15 @@ export class Player {
         if (typeof props === 'object') {
             this.id = props.id;
             this.name = props.nickname;
-            this.gameMap = props.gameMap;
             this.isLocal = props.isLocal || false;
             this.playerNumber = props.playerNumber || 1; // Default to player 1
 
             // Get initial position from the level file based on player number
-            let initialPosition = { x: 0, y: 0 };
-
-            // Search the game map for the player's starting position
-            for (let y = 0; y < this.gameMap.height; y++) {
-                for (let x = 0; x < this.gameMap.width; x++) {
-                    if (this.gameMap.grid[y] && this.gameMap.grid[y][x] && 
-                        this.gameMap.grid[y][x].type === 'empty' && 
-                        this.gameMap.grid[y][x].playerStart === String(this.playerNumber)) {
-                        initialPosition = { x, y };
-                        console.log(`Player ${this.id} (${this.name}) found starting position at (${x}, ${y})`);
-                        break;
-                    }
-                }
-            }
+            let initialPosition = props.initialPosition || props.position || { x: 0, y: 0 };
 
             // Use provided position or fall back to initial position from level
             this.position = props.position || initialPosition;
             console.log(`Player ${this.id} (${this.name}) initialized at position:`, this.position);
-        } else {
-            // Legacy constructor
-            const [id, name, position, gameMap] = arguments;
-            this.id = id;
-            this.name = name;
-            this.position = position;
-            this.gameMap = gameMap;
-            this.isLocal = false;
-            this.playerNumber = 1;
-            console.log(`Player ${this.id} (${this.name}) initialized with legacy constructor at position:`, this.position);
         }
 
         this.serverPosition = { ...this.position }; // Server's last known position
@@ -52,8 +28,6 @@ export class Player {
         this.maxBombs = 1;
         this.activeBombs = 0;
         this.flameRange = 1;
-        this.keysPressed = {};
-        this.isMoving = false;
         this.isDead = false;
         this.bombsPlaced = 0;
         this.killCount = 0;
@@ -63,7 +37,6 @@ export class Player {
         this.updateThrottleMs = 50; // Send updates every 50ms
         this.interpolationFactor = 0.2; // Adjust for smoother movement
 
-        this.element = null;
         this.createPlayerElement();
 
         // Initialize movement properties
@@ -83,6 +56,7 @@ export class Player {
     }
 
     createPlayerElement() {
+        this.element = null;
         // Create player element
         const cell = document.createElement('div');
         cell.className = `cell player-${this.id}`;
@@ -114,40 +88,28 @@ export class Player {
         if (this.isDead || !this.isLocal) return;
 
         const oldPosition = { ...this.position };
-        let moved = false;
+        this.isMoving = false;
         
         // Calculate movement based on pressed keys
         const moveSpeed = this.speed * deltaTime;
 
         if (this.keysPressed['ArrowUp'] || this.keysPressed['w']) {
             this.position.y -= moveSpeed;
-            moved = true;
+            this.isMoving = true;
         }
         if (this.keysPressed['ArrowDown'] || this.keysPressed['s']) {
             this.position.y += moveSpeed;
-            moved = true;
+            this.isMoving = true;
         }
         if (this.keysPressed['ArrowLeft'] || this.keysPressed['a']) {
             this.position.x -= moveSpeed;
-            moved = true;
+            this.isMoving = true;
         }
         if (this.keysPressed['ArrowRight'] || this.keysPressed['d']) {
             this.position.x += moveSpeed;
-            moved = true;
+            this.isMoving = true;
         }
 
-        // If moved and no collision, update position
-        if (moved && !this.gameMap.checkCollision(this.position.x, this.position.y, this.id)) {
-            // Update visual position immediately for local player
-            if (this.element) {
-                this.element.style.transform = 
-                    `translate(${this.position.x * 32}px, ${this.position.y * 32}px)`;
-            }
-            console.log(`Player ${this.id} moved to:`, this.position);
-        } else {
-            // Reset position if collision
-            this.position = oldPosition;
-        }
     }
 
     handleKeyDown(event) {
@@ -169,25 +131,11 @@ export class Player {
         console.log('Key released:', event.key, 'Keys state:', this.keysPressed);
     }
 
-    destroy() {
+    disableControls() {
         if (this.isLocal) {
             document.removeEventListener('keydown', this.handleKeyDown);
             document.removeEventListener('keyup', this.handleKeyUp);
             console.log('Removed keyboard controls');
-        }
-    }
-
-    setPosition(position) {
-        const oldCell = this.gameMap.grid[Math.floor(this.position.y)][Math.floor(this.position.x)];
-        if (oldCell) {
-            oldCell.hasPlayer = false;
-        }
-
-        this.position = position;
-        
-        const newCell = this.gameMap.grid[Math.floor(position.y)][Math.floor(position.x)];
-        if (newCell) {
-            newCell.hasPlayer = true;
         }
     }
 
@@ -224,15 +172,8 @@ export class Player {
         // Update target position for interpolation
         this.targetPosition = { ...serverPos };
         this.serverPosition = { ...serverPos };
-        
-        // // If the difference is too large, snap to the server position
-        // const dx = this.targetPosition.x - this.position.x;
-        // const dy = this.targetPosition.y - this.position.y;
-        // if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-        //     this.position = { ...serverPos };
-        // }
 
-                // If difference is too large, snap to server position
+        // If difference is too large, snap to server position
         const dx = serverPos.x - this.position.x;
         const dy = serverPos.y - this.position.y;
         if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
@@ -290,55 +231,6 @@ export class Player {
                 break;
         }
         this.powerUpsCollected++;
-    }
-
-    collectPowerUp(type) {
-        switch (type) {
-            case 'bomb':
-                this.maxBombs++;
-                break;
-            case 'flame':
-                this.flameRange++;
-                break;
-            case 'speed':
-                this.speed += 0.2;
-                break;
-        }
-        this.powerUpsCollected++;
-    }
-
-    applyPowerUp(powerUp) {
-        switch (powerUp) {
-            case PowerUp.TYPES.BOMB:
-                this.maxBombs = Math.min(this.maxBombs + 1, 8); // Cap at 8 bombs
-                break;
-            case PowerUp.TYPES.FLAME:
-                this.flameRange = Math.min(this.flameRange + 1, 6); // Cap at 6 range
-                break;
-            case PowerUp.TYPES.SPEED:
-                this.speed = Math.min(this.speed + 0.5, 3); // Cap at 3x speed
-                break;
-        }
-
-        // Play power-up sound
-        const audio = new Audio('/assets/sounds/powerup.mp3');
-        audio.volume = 0.3;
-        audio.play().catch(() => {}); // Ignore if sound fails to play
-
-        // Notify other players of power-up collection
-        webSocket.send('powerUpCollected', {
-            playerId: this.id,
-            powerUp: powerUp,
-            position: {
-                x: Math.floor(this.position.x),
-                y: Math.floor(this.position.y)
-            },
-            stats: {
-                maxBombs: this.maxBombs,
-                flameRange: this.flameRange,
-                speed: this.speed
-            }
-        });
     }
 
     takeDamage() {
@@ -502,30 +394,13 @@ export class Player {
 
     updatePosition(position) {
         this.position = position;
-        if (this.element) {
-            this.element.style.transform = 
-                `translate(${position.x * 32}px, ${position.y * 32}px)`;
-        }
+        this.element?.style.transform = 
+            `translate(${position.x * 32}px, ${position.y * 32}px)`;
         console.log(`Updated position for player ${this.id} to:`, position);
     }
 
     incrementScore(points = 1) {
         this.score += points;
-        Player.updateHUD();
-    }
-
-    powerUp(type) {
-        switch(type) {
-            case 'bomb':
-                this.maxBombs++;
-                break;
-            case 'range':
-                this.bombRange++;
-                break;
-            case 'speed':
-                this.speed = Math.min(this.speed + 0.2, 2);
-                break;
-        }
         Player.updateHUD();
     }
 }
