@@ -404,6 +404,7 @@ class GameServer {
             }
         });
     }
+    
 
     broadcastGameState() {
         const gameState = {
@@ -454,8 +455,17 @@ class GameServer {
             ready: false,
             votedLevel: null
         };
+
+        if (this.gameState.players.length >= 4) {
+            ws.send(JSON.stringify({
+                type: 'playerDenied',
+                payload: {message: "Room Full"}
+            }))
+            return
+        }
         
         this.gameState.players.set(sessionId, player);
+        
         
         // Broadcast to all clients including new player
         this.broadcast('playerJoined', {

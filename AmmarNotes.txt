@@ -4,8 +4,6 @@ Server:
 1. When the game is  on, we broadcast the game state every single frame. Isn't it better if we only broadcast when something new happens? (i.e. player starts moving, bomb is placed, etc.)
 	We could try to just have one ws package per frame with changes.
 2. The validateAndUpdatePlayerPosition validates on speed of the movement. I think this is redundant and instead we should include collision checks for the level walls on the server side.
-3. Actually, either handlePlayerMove or validateAndUpdatePlayerPosition is redundant. They should just be one function.
-	Actually Actually, validateAndUpdatePlyaerPosition is completely useless because it depends on a player attribute "pendingMoves" that is never defined anywhere
 4. Need to add a 4 player limit to the server. If someone else joins they should just be shown a room full screen.
 5. Player disconnect does not work for me for some reason
 6. We should clearInterval of countDownInterval when another player joins.

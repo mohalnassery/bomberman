@@ -70,6 +70,7 @@ export class Lobby extends Component {
             localStorage.removeItem('playerInfo');
             window.location.reload();
         });
+        webSocket.on('playerDenied', this.handlePlayerDenied.bind(this))
         
         webSocket.on('disconnect', () => {
             if (this.mounted) {
@@ -83,92 +84,9 @@ export class Lobby extends Component {
         webSocket.on('chat', this.handleChatMessage.bind(this));
     }
 
-    render() {
-        const state = this.store.getState();
-        const currentPlayer = state.players.find(p => p.nickname === this.nickname);
-        const isReady = currentPlayer?.ready || false;
-        
-        let html = `
-            <div class="page-container">
-                <div class="main-content">
-                    <div class="lobby-container">
-                        <h1>Bomberman Lobby</h1>`;
+    // -- WS HANDLERS: client to server --
 
-        // Only show join section if not joined
-        if (!this.isJoined) {
-            html += `
-                <div class="join-section">
-                    <input type="text" id="nickname" placeholder="Enter your nickname" 
-                           value="${this.nickname}">
-                    <button id="joinBtn">Join Game</button>
-                </div>`;
-        }
-
-        // Show game controls if joined
-        if (this.isJoined) {
-            html += `
-                <div class="lobby-controls">
-                    <button id="readyBtn" class="${isReady ? 'ready' : ''}" 
-                            ${!state.levelVotes[this.nickname] ? 'disabled' : ''}>
-                        ${isReady ? 'Not Ready' : 'Ready'}
-                    </button>
-                </div>
-                <div class="level-selection">
-                    <h2>Select Level:</h2>
-                    <p class="level-note">You must vote for a level before marking yourself as ready</p>
-                    <div class="level-buttons">
-                        ${Array.from({ length: 6 }, (_, i) => i + 1)
-                            .map(level => {
-                                const levelKey = `L${level}`;
-                                const votes = Object.values(state.levelVotes)
-                                    .filter(vote => vote === levelKey).length;
-                                const isSelected = state.levelVotes[this.nickname] === levelKey;
-                                return `
-                                    <button class="level-btn ${isSelected ? 'selected' : ''}" 
-                                            data-level="${levelKey}" 
-                                            ${state.levelVotes[this.nickname] ? 'disabled' : ''}>
-                                        Level ${level}
-                                        <span class="vote-count">${votes}</span>
-                                    </button>
-                                `;
-                            }).join('')}
-                    </div>
-                </div>
-                ${this.renderPlayersList(state)}
-            </div>
-            </div>`;
-            
-            // Chat section
-            html += `
-                <div class="chat-section">
-                    <div class="chat">
-                        <div class="chat-header">
-                            <span class="chat-title">Chat</span>
-                            <div class="chat-controls">
-                                <button class="minimize-btn">_</button>
-                            </div>
-                        </div>
-                        <div class="chat-body">
-                            <div id="chat-messages"></div>
-                            <div class="chat-input-container">
-                                <input type="text" id="chat-input" placeholder="Type a message...">
-                                <button id="send-btn">Send</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>`;
-        }
-
-        html += `</div>`;
-        
-        const root = document.getElementById('root');
-        if (root) {
-            root.innerHTML = html;
-            this.attachEventListeners();
-        }
-    }
-
-    async handleJoinGame() {
+    async handleJoinGame() { 
         const nicknameInput = document.getElementById('nickname');
         const nickname = nicknameInput ? nicknameInput.value.trim() : '';
 
@@ -183,7 +101,7 @@ export class Lobby extends Component {
                 await webSocket.connect();
             }
 
-            this.playerId = this.generateSessionId();
+            this.playerId = Math.random().toString(36).substring(2) + Date.now().toString(36); // previously generateSessionId (Session ID formula)
             this.nickname = nickname;
             
             // Save session and player info
@@ -229,204 +147,7 @@ export class Lobby extends Component {
             }
         }
     }
-
-    handlePlayerJoined(data) {
-        const { player, playerCount } = data;
-        const state = this.store.getState();
-        
-        if (!state.players.find(p => p.nickname === player.nickname)) {
-            this.store.setState({
-                ...state,
-                players: [...state.players, player],
-                playerCount: playerCount
-            });
-            this.render();
-        }
-    }
-
-    handlePlayerLeft(data) {
-        const { sessionId } = data;
-        const state = this.store.getState();
-        
-        this.updateGameState({
-            players: state.players.filter(p => p.sessionId !== sessionId),
-            playerCount: state.playerCount - 1
-        });
-    }
-
-    handlePlayerReady(data) {
-        const { nickname } = data;
-        const state = this.store.getState();
-        
-        const updatedPlayers = state.players.map(player => {
-            if (player.nickname === nickname) {
-                return { ...player, ready: true };
-            }
-            return player;
-        });
-
-        this.store.setState({
-            ...state,
-            players: updatedPlayers
-        });
-
-        // Update UI
-        this.render();
-    }
-
-    handlePlayerUnready(data) {
-        const { nickname } = data;
-        const state = this.store.getState();
-        
-        const updatedPlayers = state.players.map(player => {
-            if (player.nickname === nickname) {
-                return { ...player, ready: false };
-            }
-            return player;
-        });
-
-        this.store.setState({
-            ...state,
-            players: updatedPlayers
-        });
-
-        // Update UI
-        this.render();
-    }
-
-    handleGameStarting(data) {
-        const { countdown } = data;
-        this.startCountdown(countdown);
-    }
-
-    handleGameState(data) {
-        const { players, readyPlayers, levelVotes, selectedLevel } = data;
-        
-        // Update store with new state
-        this.store.setState({
-            ...this.store.getState(),
-            players: players.map(player => ({
-                ...player,
-                ready: readyPlayers.includes(player.id)
-            })),
-            levelVotes: levelVotes || {},
-            selectedLevel,
-            playerCount: players.length
-        });
-        
-        this.updateVotesDisplay();
-        this.render();
-    }
-
-    updateVotesDisplay() {
-        const state = this.store.getState();
-        
-        // Update vote counts for each level
-        ['L1', 'L2', 'L3', 'L4', 'L5', 'L6'].forEach(level => {
-            // Count votes for this level
-            const votes = Object.values(state.levelVotes).filter(vote => vote === level).length;
-            
-            // Update the vote count display
-            const voteDisplay = document.querySelector(`[data-level="${level}"] .vote-count`);
-            if (voteDisplay) {
-                voteDisplay.textContent = votes > 0 ? votes : '0';
-            }
-            
-            // Update button states
-            const levelBtn = document.querySelector(`[data-level="${level}"]`);
-            if (levelBtn) {
-                // Disable if player has already voted
-                levelBtn.disabled = !!state.levelVotes[this.nickname];
-                
-                // Highlight if this is the selected level
-                if (state.levelVotes[this.nickname] === level) {
-                    levelBtn.classList.add('selected');
-                } else {
-                    levelBtn.classList.remove('selected');
-                }
-            }
-        });
-
-        // Update ready button state
-        const readyBtn = document.getElementById('readyBtn');
-        if (readyBtn) {
-            const isReady = this.isPlayerReady(state);
-            readyBtn.disabled = !state.levelVotes[this.nickname];
-            readyBtn.textContent = isReady ? 'Not Ready' : 'Ready';
-            if (isReady) {
-                readyBtn.classList.add('ready');
-            } else {
-                readyBtn.classList.remove('ready');
-            }
-        }
-    }
-
-    getReadyButtonState(state) {
-        // Enable ready button only if player has voted
-        return !state.levelVotes[this.nickname] ? 'disabled' : '';
-    }
-
-    isPlayerReady(state) {
-        const player = state.players.find(p => p.nickname === this.nickname);
-        return player ? player.ready : false;
-    }
-
-    renderPlayersList(state) {
-        return `
-            <div class="players-container">
-                ${state.players.map(player => `
-                    <div class="player-item ${player.ready ? 'ready' : ''}">
-                        <span class="player-name">${player.nickname}</span>
-                        <span class="player-status">${player.ready ? 'Ready' : 'Not Ready'}</span>
-                        ${player.nickname === this.nickname ? ' (You)' : ''}
-                    </div>
-                `).join('')}
-            </div>
-            <div class="player-count">
-                Players: ${state.players.length} / ${state.gameSettings.maxPlayers}
-            </div>
-        `;
-    }
-
-    handleLevelVoted(data) {
-        const { nickname, level, votes } = data;
-        const state = this.store.getState();
-        
-        // Update the votes count atomically
-        this.store.setState({
-            levelVotes: {
-                ...state.levelVotes,
-                [level]: votes
-            }
-        });
-
-        // Update UI
-        this.updateVotesDisplay();
-        
-        // Disable voting buttons after player has voted
-        if (nickname === this.nickname) {
-            const levelBtns = document.querySelectorAll('.level-btn');
-            levelBtns.forEach(btn => {
-                btn.disabled = true;
-            });
-        }
-    }
-
-    handleLevelSelected(data) {
-        const { level } = data;
-        this.store.setState({ selectedLevel: level });
-        
-        // Notify all players of the selected level
-        const notification = document.createElement('div');
-        notification.className = 'level-notification';
-        notification.textContent = `Level ${level} has been selected!`;
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.remove();
-        }, 3000);
-    }
-
+    
     handleVoteLevel(level) {
         if (!this.isJoined || this.store.getState().levelVotes[this.nickname]) {
             return;
@@ -484,8 +205,36 @@ export class Lobby extends Component {
         }, 1000);
     }
 
-    // Consolidated state update method to prevent duplication
-    updateGameState(newState) {
+    // -- WS HANDLERS: server to client --
+
+    handlePlayerJoined(data) {
+        const { player, playerCount } = data;
+        const state = this.store.getState();
+        
+        if (!state.players.find(p => p.nickname === player.nickname)) {
+            this.store.setState({
+                ...state,
+                players: [...state.players, player],
+                playerCount: playerCount
+            });
+            this.render();
+        }
+    }
+
+    handlePlayerDenied() {
+        this.isJoined = false;
+        window.location.hash = '/denied'; // for now should just take to 404, revisit
+    }
+
+    handlePlayerLeft(data) {
+        const { sessionId } = data;
+        const state = this.store.getState();
+
+        const newState = {
+            players: state.players.filter(p => p.sessionId !== sessionId),
+            playerCount: state.playerCount - 1
+        }
+        
         this.store.setState({
             ...this.store.getState(),
             ...newState
@@ -493,128 +242,118 @@ export class Lobby extends Component {
         this.render();
     }
 
-    updatePlayerList() {
+    handlePlayerReady(data) {
+        const { nickname } = data;
         const state = this.store.getState();
-        console.log('Updating player list with state:', state);
         
-        const playerListElement = document.getElementById('playerList');
-        const playerCountElement = document.getElementById('playerCount');
-        
-        if (playerListElement) {
-            playerListElement.innerHTML = state.players.map(player => `
-                <div class="player-item ${state.readyPlayers.has(player.id) ? 'ready' : ''}">
-                    <span class="player-name">${player.nickname}</span>
-                    <span class="player-status">${state.readyPlayers.has(player.id) ? '✓ Ready' : 'Not Ready'}</span>
-                    ${state.levelVotes[player.nickname] ? `<span class="player-vote">Vote: ${state.levelVotes[player.nickname]}</span>` : ''}
-                </div>
-            `).join('');
-        }
-        
-        if (playerCountElement) {
-            playerCountElement.textContent = `${state.playerCount}/${state.gameSettings.maxPlayers}`;
-        }
-    }
-
-    startCountdown(seconds) {
-        const state = this.store.getState();
-        if (state.gameStarting) return;
-
-        this.store.setState({ 
-            gameStarting: true, 
-            countdown: seconds 
+        const updatedPlayers = state.players.map(player => {
+            if (player.nickname === nickname) {
+                return { ...player, ready: true };
+            }
+            return player;
         });
 
-        const countdownInterval = setInterval(() => {
-            const state = this.store.getState();
-            if (state.countdown <= 1) {
-                clearInterval(countdownInterval);
-                this.startGame();
-            } else {
-                this.store.setState({ countdown: state.countdown - 1 });
-            }
-        }, 1000);
-    }
-
-    startGame() {
-        const state = this.store.getState();
-        const selectedLevel = state.selectedLevel || '1';  // Default to level 1 if no selection
-        
-        // Save the selected level to localStorage
-        localStorage.setItem('selectedLevel', selectedLevel);
-        
-        // Don't proceed if player info is missing
-        if (!this.playerId || !this.nickname) {
-            console.error('Missing player information');
-            return;
-        }
-
-        // Save complete game state before transition
-        const playerInfo = {
-            playerId: this.playerId,
-            nickname: this.nickname,
-            selectedLevel: selectedLevel,
-            settings: state.gameSettings,
-            ready: true,
-            gameStatus: 'running'
-        };
-        
-        localStorage.setItem('playerInfo', JSON.stringify(playerInfo));
-        
-        // Update session with current game state
-        const session = {
-            nickname: this.nickname,
-            playerId: this.playerId,
-            currentPage: '#/game',
-            gameState: {
-                selectedLevel: selectedLevel,
-                players: state.players,
-                readyPlayers: Array.from(state.readyPlayers),
-                gameStatus: 'running',
-                timestamp: Date.now()
-            }
-        };
-        localStorage.setItem('playerSession', JSON.stringify(session));
-
-        // Notify server that this player is starting the game
-        webSocket.send('startGame', {
-            playerId: this.playerId,
-            nickname: this.nickname,
-            selectedLevel: selectedLevel
+        this.store.setState({
+            ...state,
+            players: updatedPlayers
         });
 
-        // Clean up and transition
-        window.location.hash = '/game';
+        // Update UI
+        this.render();
     }
 
-    isHost(state) {
-        return state.players[0].id === this.playerId;
+    handlePlayerUnready(data) {
+        const { nickname } = data;
+        const state = this.store.getState();
+        
+        const updatedPlayers = state.players.map(player => {
+            if (player.nickname === nickname) {
+                return { ...player, ready: false };
+            }
+            return player;
+        });
+
+        this.store.setState({
+            ...state,
+            players: updatedPlayers
+        });
+
+        // Update UI
+        this.render();
     }
 
-    destroy() {
-        // Clean up WebSocket listeners
-        webSocket.off('playerJoined');
-        webSocket.off('playerLeave');
-        webSocket.off('playerReady');
-        webSocket.off('playerUnready');
-        webSocket.off('gameStarting');
-        webSocket.off('gameState');
-        webSocket.off('levelVoted');
-        webSocket.off('levelSelected');
+    handleGameState(data) {
+        const { players, readyPlayers, levelVotes, selectedLevel } = data;
         
-        // Remove global handler
-        delete window.handleVoteLevel;
+        // Update store with new state
+        this.store.setState({
+            ...this.store.getState(),
+            players: players.map(player => ({
+                ...player,
+                ready: readyPlayers.includes(player.id)
+            })),
+            levelVotes: levelVotes || {},
+            selectedLevel,
+            playerCount: players.length
+        });
         
-        const session = JSON.parse(localStorage.getItem('playerSession'));
-        if (window.location.hash !== '#/game' || !session || session.currentPage !== '#/game') {
-            localStorage.removeItem('playerSession');
-            localStorage.removeItem('playerInfo');
+        this.updateVotesDisplay();
+        this.render();
+    }
+
+    handleLevelVoted(data) {
+        const { nickname, level, votes } = data;
+        const state = this.store.getState();
+        
+        // Update the votes count atomically
+        this.store.setState({
+            levelVotes: {
+                ...state.levelVotes,
+                [level]: votes
+            }
+        });
+
+        // Update UI
+        this.updateVotesDisplay();
+        
+        // Disable voting buttons after player has voted
+        if (nickname === this.nickname) {
+            const levelBtns = document.querySelectorAll('.level-btn');
+            levelBtns.forEach(btn => {
+                btn.disabled = true;
+            });
         }
-        
-        this.mounted = false;
     }
 
-    generateSessionId() {
-        return Math.random().toString(36).substring(2) + Date.now().toString(36);
+    handleLevelSelected(data) {
+        const { level } = data;
+        this.store.setState({ selectedLevel: level });
+        
+        // Notify all players of the selected level
+        const notification = document.createElement('div');
+        notification.className = 'level-notification';
+        notification.textContent = `Level ${level} has been selected!`;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.remove();
+        }, 3000);
+    }
+
+    handleChatMessage(data) {
+        const { nickname, message } = data;
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'chat-message';
+            messageElement.innerHTML = `
+                <span class="timestamp">${new Date().toLocaleTimeString()}</span>
+                <span class="player-name">${nickname}:</span>
+                <span class="message">${message}</span>
+            `;
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
     }
 
     handleSyncPlayers(data) {
@@ -631,25 +370,28 @@ export class Lobby extends Component {
         this.updateLevelVotes();
     }
 
-    reconnect() {
-        if (!this.playerId || !this.nickname) return;
-        
-        // Only connect if not already connected
-        if (!webSocket.connected) {
-            webSocket.connect().then(() => {
-                webSocket.send('reconnect', {
-                    playerId: this.playerId,
-                    nickname: this.nickname,
-                    currentPage: window.location.hash
-                });
-            }).catch(error => {
-                console.error('Failed to reconnect:', error);
-                localStorage.removeItem('playerSession');
-                localStorage.removeItem('playerInfo');
-                window.location.reload();
-            });
-        }
+    handleGameStarting(data) {
+        const { countdown } = data;
+        const state = this.store.getState();
+        if (state.gameStarting) return;
+
+        this.store.setState({ 
+            gameStarting: true, 
+            countdown: countdown 
+        });
+
+        const countdownInterval = setInterval(() => {
+            const state = this.store.getState();
+            if (state.countdown <= 1) {
+                clearInterval(countdownInterval);
+                this.startGame();
+            } else {
+                this.store.setState({ countdown: state.countdown - 1 });
+            }
+        }, 1000);
     }
+
+    // -- UI Control --
 
     attachEventListeners() {
         if (!this.isJoined) {
@@ -720,19 +462,235 @@ export class Lobby extends Component {
         }
     }
 
-    handleChatMessage(data) {
-        const { nickname, message } = data;
-        const chatMessages = document.getElementById('chat-messages');
-        if (chatMessages) {
-            const messageElement = document.createElement('div');
-            messageElement.className = 'chat-message';
-            messageElement.innerHTML = `
-                <span class="timestamp">${new Date().toLocaleTimeString()}</span>
-                <span class="player-name">${nickname}:</span>
-                <span class="message">${message}</span>
-            `;
-            chatMessages.appendChild(messageElement);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+    updateVotesDisplay() {
+        const state = this.store.getState();
+        
+        // Update vote counts for each level
+        ['L1', 'L2', 'L3', 'L4', 'L5', 'L6'].forEach(level => {
+            // Count votes for this level
+            const votes = Object.values(state.levelVotes).filter(vote => vote === level).length;
+            
+            // Update the vote count display
+            const voteDisplay = document.querySelector(`[data-level="${level}"] .vote-count`);
+            if (voteDisplay) {
+                voteDisplay.textContent = votes > 0 ? votes : '0';
+            }
+            
+            // Update button states
+            const levelBtn = document.querySelector(`[data-level="${level}"]`);
+            if (levelBtn) {
+                // Disable if player has already voted
+                levelBtn.disabled = !!state.levelVotes[this.nickname];
+                
+                // Highlight if this is the selected level
+                if (state.levelVotes[this.nickname] === level) {
+                    levelBtn.classList.add('selected');
+                } else {
+                    levelBtn.classList.remove('selected');
+                }
+            }
+        });
+
+        // Update ready button state
+        const readyBtn = document.getElementById('readyBtn');
+        if (readyBtn) {
+            const player = state.players.find(p => p.nickname === this.nickname);
+            const isReady = player ? player.ready : false;
+            readyBtn.disabled = !state.levelVotes[this.nickname];
+            readyBtn.textContent = isReady ? 'Not Ready' : 'Ready';
+            if (isReady) {
+                readyBtn.classList.add('ready');
+            } else {
+                readyBtn.classList.remove('ready');
+            }
         }
+    }
+
+    updatePlayerList() {
+        const state = this.store.getState();
+        console.log('Updating player list with state:', state);
+        
+        const playerListElement = document.getElementById('playerList');
+        const playerCountElement = document.getElementById('playerCount');
+        
+        if (playerListElement) {
+            playerListElement.innerHTML = state.players.map(player => `
+                <div class="player-item ${state.readyPlayers.has(player.id) ? 'ready' : ''}">
+                    <span class="player-name">${player.nickname}</span>
+                    <span class="player-status">${state.readyPlayers.has(player.id) ? '✓ Ready' : 'Not Ready'}</span>
+                    ${state.levelVotes[player.nickname] ? `<span class="player-vote">Vote: ${state.levelVotes[player.nickname]}</span>` : ''}
+                </div>
+            `).join('');
+        }
+        
+        if (playerCountElement) {
+            playerCountElement.textContent = `${state.playerCount}/${state.gameSettings.maxPlayers}`;
+        }
+    }
+
+    // -- START GAME --
+
+    startGame() {
+        const state = this.store.getState();
+        const selectedLevel = state.selectedLevel || '1';  // Default to level 1 if no selection
+        
+        // Save the selected level to localStorage
+        localStorage.setItem('selectedLevel', selectedLevel);
+        
+        // Don't proceed if player info is missing
+        if (!this.playerId || !this.nickname) {
+            console.error('Missing player information');
+            return;
+        }
+
+        // Save complete game state before transition
+        const playerInfo = {
+            playerId: this.playerId,
+            nickname: this.nickname,
+            selectedLevel: selectedLevel,
+            settings: state.gameSettings,
+            ready: true,
+            gameStatus: 'running'
+        };
+        
+        localStorage.setItem('playerInfo', JSON.stringify(playerInfo));
+        
+        // Update session with current game state
+        const session = {
+            nickname: this.nickname,
+            playerId: this.playerId,
+            currentPage: '#/game',
+            gameState: {
+                selectedLevel: selectedLevel,
+                players: state.players,
+                readyPlayers: Array.from(state.readyPlayers),
+                gameStatus: 'running',
+                timestamp: Date.now()
+            }
+        };
+        localStorage.setItem('playerSession', JSON.stringify(session));
+
+        // Clean up and transition
+        window.location.hash = '/game';
+    }
+
+    // -- COMPONENT RENDERING --
+    
+    render() {
+        const state = this.store.getState();
+        const currentPlayer = state.players.find(p => p.nickname === this.nickname);
+        const isReady = currentPlayer?.ready || false;
+        
+        let html = `
+            <div class="page-container">
+                <div class="main-content">
+                    <div class="lobby-container">
+                        <h1>Bomberman Lobby</h1>`;
+
+        // Only show join section if not joined
+        if (!this.isJoined) {
+            html += `
+                <div class="join-section">
+                    <input type="text" id="nickname" placeholder="Enter your nickname" 
+                           value="${this.nickname}">
+                    <button id="joinBtn">Join Game</button>
+                </div>`;
+        }
+        // Show game controls if joined
+        else {
+            html += `
+                <div class="lobby-controls">
+                    <button id="readyBtn" class="${isReady ? 'ready' : ''}" 
+                            ${!state.levelVotes[this.nickname] ? 'disabled' : ''}>
+                        ${isReady ? 'Not Ready' : 'Ready'}
+                    </button>
+                </div>
+                <div class="level-selection">
+                    <h2>Select Level:</h2>
+                    <p class="level-note">You must vote for a level before marking yourself as ready</p>
+                    <div class="level-buttons">
+                        ${Array.from({ length: 6 }, (_, i) => i + 1)
+                            .map(level => {
+                                const levelKey = `L${level}`;
+                                const votes = Object.values(state.levelVotes)
+                                    .filter(vote => vote === levelKey).length;
+                                const isSelected = state.levelVotes[this.nickname] === levelKey;
+                                return `
+                                    <button class="level-btn ${isSelected ? 'selected' : ''}" 
+                                            data-level="${levelKey}" 
+                                            ${state.levelVotes[this.nickname] ? 'disabled' : ''}>
+                                        Level ${level}
+                                        <span class="vote-count">${votes}</span>
+                                    </button>
+                                `;
+                            }).join('')}
+                    </div>
+                </div>
+                <div class="players-container">
+                    ${state.players.map(player => `
+                        <div class="player-item ${player.ready ? 'ready' : ''}">
+                            <span class="player-name">${player.nickname}</span>
+                            <span class="player-status">${player.ready ? 'Ready' : 'Not Ready'}</span>
+                            ${player.nickname === this.nickname ? ' (You)' : ''}
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="player-count">
+                    Players: ${state.players.length} / ${state.gameSettings.maxPlayers}
+                </div>
+            </div>
+            </div>`;
+            
+            // Chat section
+            html += `
+                <div class="chat-section">
+                    <div class="chat">
+                        <div class="chat-header">
+                            <span class="chat-title">Chat</span>
+                            <div class="chat-controls">
+                                <button class="minimize-btn">_</button>
+                            </div>
+                        </div>
+                        <div class="chat-body">
+                            <div id="chat-messages"></div>
+                            <div class="chat-input-container">
+                                <input type="text" id="chat-input" placeholder="Type a message...">
+                                <button id="send-btn">Send</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        html += `</div>`;
+        
+        const root = document.getElementById('root');
+        if (root) {
+            root.innerHTML = html;
+            this.attachEventListeners();
+        }
+    }
+
+    destroy() {
+        // Clean up WebSocket listeners
+        webSocket.off('playerJoined');
+        webSocket.off('playerLeave');
+        webSocket.off('playerReady');
+        webSocket.off('playerUnready');
+        webSocket.off('gameStarting');
+        webSocket.off('gameState');
+        webSocket.off('levelVoted');
+        webSocket.off('levelSelected');
+        
+        // Remove global handler
+        delete window.handleVoteLevel;
+        
+        const session = JSON.parse(localStorage.getItem('playerSession'));
+        if (window.location.hash !== '#/game' || !session || session.currentPage !== '#/game') {
+            localStorage.removeItem('playerSession');
+            localStorage.removeItem('playerInfo');
+        }
+        
+        this.mounted = false;
     }
 }
