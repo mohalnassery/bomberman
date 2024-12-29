@@ -317,35 +317,6 @@ export class Player {
         return false;
     }
 
-    render(container) {
-        // Remove all previous player cells for this player
-        const playerId = typeof this.id === 'object' ? JSON.stringify(this.id) : this.id;
-        const previousCells = document.querySelectorAll(`.player-${playerId}`);
-        previousCells.forEach(cell => {
-            cell.classList.remove(`player-${playerId}`);
-            const playerChar = cell.querySelector('.player-character');
-            if (playerChar) {
-                playerChar.remove();
-            }
-        });
-
-        // Don't render if dead (unless in spectator mode)
-        if (this.isDead) return;
-
-        // Get the exact cell based on rounded position
-        const cell = $(`.cell[data-x="${Math.round(this.position.x)}"][data-y="${Math.round(this.position.y)}"]`);
-        if (cell) {
-            cell.classList.add(`player-${playerId}`);
-            
-            // Add player character if it doesn't exist
-            if (!cell.querySelector('.player-character')) {
-                const playerChar = document.createElement('div');
-                playerChar.className = 'player-character';
-                cell.appendChild(playerChar);
-            }
-        }
-    }
-
     static connectedPlayers = new Set();
 
     static addPlayer(player) {
@@ -394,7 +365,7 @@ export class Player {
 
     updatePosition(position) {
         this.position = position;
-        this.element?.style.transform = 
+        this.element.style.transform = 
             `translate(${position.x * 32}px, ${position.y * 32}px)`;
         console.log(`Updated position for player ${this.id} to:`, position);
     }
@@ -402,5 +373,34 @@ export class Player {
     incrementScore(points = 1) {
         this.score += points;
         Player.updateHUD();
+    }
+
+    render(container) {
+        // Remove all previous player cells for this player
+        const playerId = typeof this.id === 'object' ? JSON.stringify(this.id) : this.id;
+        const previousCells = document.querySelectorAll(`.player-${playerId}`);
+        previousCells.forEach(cell => {
+            cell.classList.remove(`player-${playerId}`);
+            const playerChar = cell.querySelector('.player-character');
+            if (playerChar) {
+                playerChar.remove();
+            }
+        });
+
+        // Don't render if dead (unless in spectator mode)
+        if (this.isDead) return;
+
+        // Get the exact cell based on rounded position
+        const cell = $(`.cell[data-x="${Math.round(this.position.x)}"][data-y="${Math.round(this.position.y)}"]`);
+        if (cell) {
+            cell.classList.add(`player-${playerId}`);
+            
+            // Add player character if it doesn't exist
+            if (!cell.querySelector('.player-character')) {
+                const playerChar = document.createElement('div');
+                playerChar.className = 'player-character';
+                cell.appendChild(playerChar);
+            }
+        }
     }
 }

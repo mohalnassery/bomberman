@@ -121,88 +121,11 @@ export class Game extends Component {
             }
         }
 
-        // Update bombs
-        this.map.activeBombs.forEach((bomb, id) => {
-            bomb.update(deltaTime);
-            if (bomb.shouldExplode) {
-                this.map.handleBombExplosion(bomb);
-                this.map.activeBombs.delete(id);
-            }
-        });
-
-        // Update explosions
-        this.map.explosions.forEach((explosion, id) => {
-            explosion.update(deltaTime);
-            if (explosion.isFinished) {
-                this.map.explosions.delete(id);
-                // Clear explosion cells
-                explosion.cells.forEach(cell => {
-                    if (this.map.grid[cell.y][cell.x]) {
-                        this.map.grid[cell.y][cell.x].hasExplosion = false;
-                    }
-                });
-            }
-        });
-
+        // removed bomb countdown and explosion stuff because that should be server side
         // removed win check because that should only happen during explosions, and also on server side
     }
 
-    render() {
-        // Clear the game container
-        const root = document.getElementById('root');
-        if (!root) return;
-
-        root.innerHTML = '';
-
-        // Create game container
-        const gameContainer = document.createElement('div');
-        gameContainer.className = 'game-container';
-        root.appendChild(gameContainer);
-
-        // Only render map and players if the game is running
-        if (this.isRunning) {
-            // Render map (which includes player HUD)
-            this.map.render(gameContainer);
-
-            // Render all players
-            this.players.forEach(player => {
-                if (!player.isDead || this.spectatorMode) {
-                    player.render(gameContainer);
-                }
-            });
-        } else {
-            // Show waiting screen
-            const waitingScreen = document.createElement('div');
-            waitingScreen.className = 'waiting-screen';
-            waitingScreen.innerHTML = '<h2>Waiting for game to start...</h2>';
-            gameContainer.appendChild(waitingScreen);
-        }
-
-        // Render chat
-        if (this.chat) {
-            this.chat.render();
-        }
-
-        // Render spectator mode indicator
-        if (this.spectatorMode) {
-            const indicator = document.createElement('div');
-            indicator.className = 'spectator-indicator';
-            indicator.textContent = 'Spectator Mode';
-            root.appendChild(indicator);
-        }
-    }
-
-    checkGameOver() {
-        const alivePlayers = Array.from(this.players.values()).filter(p => !p.isDead);
-
-        if (alivePlayers.length === 1) {
-            const winner = alivePlayers[0];
-            webSocket.send('gameOver', {
-                winnerId: winner.id,
-                winnerName: winner.name
-            });
-        }
-    }
+    // removed checkGameOver because that is server side
 
     showGameOverScreen() {
         const overlay = document.createElement('div');
@@ -264,6 +187,8 @@ export class Game extends Component {
         //webSocket.on('playerMove', this.handlePlayerMove);
         webSocket.on('playerLeave', this.handlePlayerLeave);
         webSocket.on('gameOver', this.handleGameOver);
+        webSocket.on('bombPlaced',this.handleBombPlaced);
+        webSocket.on('bombExplosion',this.handleBombExplosion);
     }
 
     handleGameState(data) {
@@ -279,9 +204,7 @@ export class Game extends Component {
                     console.log('Map loaded successfully');
                     data.players?.forEach(playerData => {
                         let player = this.players.get(playerData.id);
-                        if (player) {
-                            player.position = playerData.position || this.map.getPlayerStartPosition(index) || { x: 0, y: 0 } // Provide default position
-                        }
+                        player.position = playerData.position || this.map.getPlayerStartPosition(index) || { x: 0, y: 0 } // Provide default position
                     });
                     this.render(); // Force render after map loads
                 })
@@ -291,7 +214,7 @@ export class Game extends Component {
         }
 
         // Update all players from game state
-        data.players?.forEach(playerData => {
+        data.players?.forEach((playerData, index) => {
             let player = this.players.get(playerData.id);
 
             if (!player) {
@@ -335,46 +258,39 @@ export class Game extends Component {
     }
 
     handleBombPlaced(data) {
-        const { playerId, position, range, timestamp } = data;
+        const { id, playerId, position, range, timestamp } = data;
         const player = this.players.get(playerId);
 
         if (player && !this.map.hasBomb(position.x, position.y)) {
             player.activeBombs++;
-            this.map.placeBomb(position.x, position.y, range, playerId);
-
-            // Schedule bomb explosion
-            setTimeout(() => {
-                webSocket.send('bombExplode', {
-                    playerId,
-                    position,
-                    timestamp: Date.now()
-                });
-            }, 3000);
+            this.map.placeBomb(id, position.x, position.y, range, playerId);
+            // removed Schedule bomb explosion because that is a server side thing
         }
     }
 
-    handleBombExplode(data) {
-        const { position, playerId } = data;
-        const player = this.players.get(playerId);
+    handleBombExplosion(data) {
+        const {
+            bombId,
+            affectedPositions,
+            destroyedBlocks,
+            affectedPlayers,
+            chainReaction,
+            timestamp
+        } = data;
 
-        if (player) {
-            player.activeBombs--;
-            this.map.explodeBomb(position.x, position.y);
-        }
-    }
+        // Remove the bomb & blocks and add the explosion effect
+        this.map.explodeBomb(bombId, destroyedBlocks, affectedPositions);
 
-    handlePowerUpCollected(data) {
-        const { playerId, position, type } = data;
-        const player = this.players.get(playerId);
-
-        if (player) {
-            const cell = this.map.grid[position.y][position.x];
-            if (cell && cell.type === 'powerup') {
-                player.handlePowerUp(type);
-                cell.type = 'empty';
-                cell.powerUp = null;
+        // Handle affected players
+        affectedPlayers.forEach(playerId => {
+            const player = this.players.get(playerId);
+            if (player) {
+                player.handleExplosion();
+                if (player.lives <= 0 && playerId === this.localPlayerId) {
+                    this.enterSpectatorMode();
+                }
             }
-        }
+        });
     }
 
     handlePlayerDeath(data) {
@@ -383,14 +299,10 @@ export class Game extends Component {
 
         if (player) {
             player.die(position);
-
             // Enter spectator mode if local player died
             if (playerId === this.localPlayerId) {
                 this.enterSpectatorMode();
             }
-
-            // Check for game over
-            this.checkGameOver();
         }
     }
 
@@ -409,88 +321,18 @@ export class Game extends Component {
         // Handle error appropriately (show message to user, etc.)
     }
 
-    handleBombExplosion(data) {
-        const {
-            bombId,
-            affectedPositions,
-            destroyedBlocks,
-            affectedPlayers,
-            chainReaction,
-            timestamp
-        } = data;
-
-        // Remove the bomb
-        const bomb = this.bombs.get(bombId);
-        if (bomb) {
-            bomb.destroy();
-            this.bombs.delete(bombId);
-        }
-
-        // Handle destroyed blocks and show animations
-        destroyedBlocks.forEach(blockKey => {
-            const [x, y] = blockKey.split(',').map(Number);
-            const cell = $(`.cell[data-x="${x}"][data-y="${y}"]`);
-            if (cell) {
-                cell.classList.add('block-destroy');
-                setTimeout(() => {
-                    cell.classList.remove('block', 'block-destroy');
-                }, 500);
-            }
-        });
-
-        // Show explosion animation
-        affectedPositions.forEach(pos => {
-            const cell = $(`.cell[data-x="${pos.x}"][data-y="${pos.y}"]`);
-            if (cell) {
-                cell.classList.add('explosion');
-                setTimeout(() => {
-                    cell.classList.remove('explosion');
-                }, 1000);
-            }
-        });
-
-        // Handle affected players
-        affectedPlayers.forEach(playerId => {
-            const player = this.players.get(playerId);
-            if (player) {
-                player.handleExplosion();
-                if (player.lives <= 0 && playerId === this.localPlayerId) {
-                    this.enterSpectatorMode();
-                }
-            }
-        });
-    }
-
     handlePowerUpCollection(data) {
         const {
             playerId,
-            powerUpKey,
+            position,
             type,
             stats
         } = data;
 
         // Update player stats
         const player = this.players.get(playerId);
-        if (player) {
-            Object.assign(player, stats);
-        }
-
-        // Remove power-up from map
-        const [x, y] = powerUpKey.split(',').map(Number);
-        const cell = `.cell[data-x="${x}"][data-y="${y}"]`;
-        if (cell) {
-            cell.classList.remove('power-up', `power-up-${type}`);
-
-            // Show collection animation
-            const animation = document.createElement('div');
-            animation.className = 'power-up-collect';
-            animation.textContent = this.getPowerUpDisplayText(type);
-            cell.appendChild(animation);
-
-            setTimeout(() => {
-                animation.remove();
-            }, 1000);
-        }
+        player?.handlePowerUp(type);
+        this.map.removePowerUp(position)
     }
 
     getPowerUpDisplayText(type) {
@@ -559,6 +401,51 @@ export class Game extends Component {
         const container = $('.game-container');
         if (container) {
             container.style.transform = `translate(${this.spectatorOffset.x}px, ${this.spectatorOffset.y}px)`;
+        }
+    }
+
+    render() {
+        // Clear the game container
+        const root = document.getElementById('root');
+        if (!root) return;
+
+        root.innerHTML = '';
+
+        // Create game container
+        const gameContainer = document.createElement('div');
+        gameContainer.className = 'game-container';
+        root.appendChild(gameContainer);
+
+        // Only render map and players if the game is running
+        if (this.isRunning) {
+            // Render map (which includes player HUD)
+            this.map.render(gameContainer);
+
+            // Render all players
+            this.players.forEach(player => {
+                if (!player.isDead || this.spectatorMode) {
+                    player.render(gameContainer);
+                }
+            });
+        } else {
+            // Show waiting screen
+            const waitingScreen = document.createElement('div');
+            waitingScreen.className = 'waiting-screen';
+            waitingScreen.innerHTML = '<h2>Waiting for game to start...</h2>';
+            gameContainer.appendChild(waitingScreen);
+        }
+
+        // Render chat
+        if (this.chat) {
+            this.chat.render();
+        }
+
+        // Render spectator mode indicator
+        if (this.spectatorMode) {
+            const indicator = document.createElement('div');
+            indicator.className = 'spectator-indicator';
+            indicator.textContent = 'Spectator Mode';
+            root.appendChild(indicator);
         }
     }
 

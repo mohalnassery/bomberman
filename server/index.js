@@ -2,6 +2,7 @@ import { WebSocketServer } from 'ws';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
+import { count } from 'console';
 
 function getLocalIP() {
     const interfaces = os.networkInterfaces();
@@ -67,11 +68,7 @@ class GameServer {
         this.initializeLevel(this.gameState.selectedLevel);
         
         // Broadcast game start with selected level
-        this.broadcast('gameStarted', {
-            level: this.gameState.selectedLevel,
-            playerCount: this.gameState.players.size,
-            timestamp: Date.now()
-        });
+        this.broadcastGameState();
 
         this.startGameLoop();
     }
@@ -173,17 +170,24 @@ class GameServer {
             position: data.position,
             timestamp: Date.now()
         })
+
+        const playerX = Math.floor(player.position.x);
+        const playerY = Math.floor(player.position.y);
+        if (this.gameState.grid[playerY][playerX].type === 'powerup') {
+            this.handlePowerUpCollection(playerId,playerX,playerY)
+        }
+
     }
 
-    handleBombPlacement(playerId, data) {
-        const player = this.gameState.players.get(playerId);
+    handleBombPlacement(data) {
+        const player = this.gameState.players.get(data.playerId);
         if (!player) return;
 
         const bomb = {
-            id: Date.now(),
+            id: this.gameState.bombs.size+1,
             position: data.position,
-            ownerId: player.id,
-            range: player.powerUps.flames,
+            playerId: data.playerId,
+            range: data.range,
             timeRemaining: 3
         };
 
@@ -193,7 +197,7 @@ class GameServer {
         player.bombsPlaced++;
 
         // Broadcast bomb placement to all clients
-        this.broadcast('bombPlaced', {bomb});
+        this.broadcast('bombPlaced', bomb);
     }
 
     handleBombExplosion(bombId, bomb) {
@@ -234,8 +238,8 @@ class GameServer {
                     player.lives--;
                     if (player.lives <= 0) {
                         player.isDead = true;
-                        if (bomb.ownerId !== playerId) {
-                            const killer = this.gameState.players.get(bomb.ownerId);
+                        if (bomb.playerId !== playerId) {
+                            const killer = this.gameState.players.get(bomb.playerId);
                             if (killer) {
                                 killer.killCount++;
                             }
@@ -379,8 +383,11 @@ class GameServer {
                         this.handleLevelVote(ws, data.payload);
                         break;
                     case 'playerMove':  // Add this case
-                    console.log('Handling player move');
+                        console.log('Handling player move');
                         this.handlePlayerMove(ws, data.payload);
+                        break;
+                    case 'placeBomb':
+                        this.handleBombPlacement()
                         break;
                     case 'requestSync':
                         this.sendGameState(ws);
@@ -480,15 +487,9 @@ class GameServer {
         if (!playerId) return;
 
         this.gameState.readyPlayers.add(playerId);
-        
-        // Check if all players are ready
-        const allReady = Array.from(this.gameState.players.keys())
-            .every(id => this.gameState.readyPlayers.has(id));
-        
-        if (allReady && this.gameState.players.size >= 2) {
-            this.startGameCountdown();
-        }
 
+        this.checkGameStart();
+        
         this.broadcastGameState();
     }
 
@@ -597,34 +598,17 @@ class GameServer {
 
     checkGameStart() {
         if (this.gameState.gameStatus !== 'waiting') return;
-
-        const players = Array.from(this.gameState.players.values());
-        const readyPlayers = players.filter(p => p.ready);
-
-        // Check if we have enough players and all are ready
-        if (readyPlayers.length >= 2 && readyPlayers.length === players.length) {
-            // Start game countdown
-            this.gameState.gameStatus = 'starting';
-            this.broadcast('gameStarting', {
-                countdown: 3,
-                timestamp: Date.now()
-            });
-
-            // Start countdown
-            let countdown = 3;
-            const countdownInterval = setInterval(() => {
-                countdown--;
-                if (countdown > 0) {
-                    this.broadcast('gameStarting', {
-                        countdown,
-                        timestamp: Date.now()
-                    });
-                } else {
-                    clearInterval(countdownInterval);
-                    this.startGame();
-                }
-            }, 1000);
+        
+        if (this.checkAllReady()) {
+            this.startGameCountdown();
         }
+    }
+
+    checkAllReady() {
+        // Check if we have enough players and all are ready
+        const allReady = Array.from(this.gameState.players.keys())
+            .every(id => this.gameState.readyPlayers.has(id));
+        return (allReady && this.gameState.players.size >= 2)
     }
 
     async initializeLevel(levelName) {
@@ -714,7 +698,6 @@ class GameServer {
                 };
             }
         }
-        
         console.log('Server: Generated default map');
     }
 
@@ -722,15 +705,19 @@ class GameServer {
         if (this.gameState.gameStatus !== 'waiting') return;
         
         this.gameState.gameStatus = 'countdown';
-        let countdown = 3;
+        let countdown = 10;
+        this.broadcast('gameStarting',{ countdown });
         
         const timer = setInterval(() => {
+            console.log(countdown)
+            if (!this.checkAllReady()) {
+                clearInterval(timer);
+                this.gameState.gameStatus = 'waiting';
+            }
             if (countdown <= 0) {
                 clearInterval(timer);
-                this.gameState.gameStatus = 'running';
-                this.broadcastGameState();
+                this.startGame();
             } else {
-                this.broadcast('gameStarting',{ countdown });
                 countdown--;
             }
         }, 1000);

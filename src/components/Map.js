@@ -9,7 +9,6 @@ export class GameMap {
         this.currentLevel = null;
         this.activeBombs = new Map();
         this.explosions = new Map();
-        this.powerUps = new Map();
         this.players = new Map();
         this.playerStartPositions = new Map(); // Store player starting positions
     }
@@ -86,31 +85,10 @@ export class GameMap {
         }
     }
 
-    clearPowerUps() {
-        this.powerUps.clear();
-        for (let y = 0; y < this.height; y++) {
-            if (!this.grid[y]) {
-                this.grid[y] = [];
-            }
-            for (let x = 0; x < this.width; x++) {
-                if (!this.grid[y][x]) {
-                    this.grid[y][x] = {
-                        type: 'empty',
-                        powerUp: null,
-                        bomb: null,
-                        explosion: null
-                    };
-                } else if (this.grid[y][x].powerUp) {
-                    this.grid[y][x].powerUp = null;
-                }
-            }
-        }
-    }
-
-    placeBomb(x, y, range, playerId) {
+    placeBomb(id, x, y, range, playerId) {
         if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
-            const bombId = `${playerId}-${Date.now()}`;
             this.activeBombs.set(bombId, {
+                id,
                 position: { x, y },
                 range,
                 playerId
@@ -121,83 +99,67 @@ export class GameMap {
                 playerId
             };
         }
-    }
+    }    
 
     hasBomb(x, y) {
         if (!this.grid || !Array.isArray(this.grid) || x < 0 || x >= this.width || y < 0 || y >= this.height ||!this.grid[y] || !this.grid[y][x] ) return false;
         return this.grid[y][x].bomb !== null && this.grid[y][x].bomb !== undefined;
     }
 
-    explodeBomb(x, y) {
-        if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
-            const bomb = this.grid[y][x].bomb;
-            if (bomb) {
-                this.activeBombs.delete(bomb.id);
-                this.grid[y][x].bomb = null;
-            }
-        }
-    }
-
-    render() {
-        // Create map container if it doesn't exist
-        let mapContainer = document.querySelector('.map-container');
-        if (!mapContainer) {
-            mapContainer = document.createElement('div');
-            mapContainer.className = 'map-container';
-            const root = document.getElementById('root');
-            if (!root) {
-                console.error('Root element not found');
-                return;
-            }
-            root.appendChild(mapContainer);
+    explodeBomb(bombId) {
+        const bomb = this.activeBombs.get(bombId)
+        if (bomb) {
+            this.activeBombs.delete(bomb.id);
+            this.grid[bomb.position.y][this.bomb.position.x].bomb = null;
         }
 
-        // Clear existing map content
-        mapContainer.innerHTML = '';
-
-        // Create and append map grid
-        const mapGrid = document.createElement('div');
-        mapGrid.className = 'map-grid';
-        mapContainer.appendChild(mapGrid);
-
-        // Render each cell
-        for (let y = 0; y < this.height; y++) {
-            for (let x = 0; x < this.width; x++) {
-                const cell = document.createElement('div');
-                cell.className = 'cell';
-                cell.dataset.x = x;
-                cell.dataset.y = y;
-
-                // Add cell type classes
-                const cellData = this.grid[y][x];
-                if (cellData && cellData.type !== 'empty') {
-                    cell.classList.add(cellData.type);
-                }
-
-                // Add power-ups, bombs, and explosions
-                if (cellData) {
-                    if (cellData.powerUp) {
-                        cell.classList.add('power-up', cellData.powerUp.type);
-                    }
-                    if (cellData.bomb) {
-                        cell.classList.add('bomb');
-                    }
-                    if (cellData.explosion) {
-                        cell.classList.add('explosion');
-                    }
-                }
-
-                mapGrid.appendChild(cell);
-            }
-        }
-
-        // Let each player render themselves
-        Array.from(this.players.values()).forEach(player => {
-            if (!player.isDead) {
-                player.render(mapGrid);
+        // Handle destroyed blocks and show animations
+        destroyedBlocks.forEach(blockKey => {
+            const [x, y] = blockKey.split(',').map(Number);
+            const cell = $(`.cell[data-x="${x}"][data-y="${y}"]`);
+            if (cell) {
+                cell.classList.add('block-destroy');
+                setTimeout(() => {
+                    cell.classList.remove('block', 'block-destroy');
+                }, 500);
             }
         });
-    }
+
+        // Show explosion animation
+        affectedPositions.forEach(pos => {
+            const cell = $(`.cell[data-x="${pos.x}"][data-y="${pos.y}"]`);
+            if (cell) {
+                cell.classList.add('explosion');
+                setTimeout(() => {
+                    cell.classList.remove('explosion');
+                }, 1000);
+            }
+        });
+    }    
+
+    removePowerUp(position) {
+        const cellGrid = this.map.grid[position.y][position.x];
+        if (cellGrid && cellGrid.type === 'powerup') {
+            cellGrid.type = 'empty';
+            cellGrid.powerUp = null;
+        }
+
+        // Remove power-up from map
+        const cell = `.cell[data-x="${position.x}"][data-y="${position.y}"]`;
+        if (cell) {
+            cell.classList.remove('power-up', `power-up-${type}`);
+
+            // Show collection animation
+            const animation = document.createElement('div');
+            animation.className = 'power-up-collect';
+            animation.textContent = this.getPowerUpDisplayText(type);
+            cell.appendChild(animation);
+
+            setTimeout(() => {
+                animation.remove();
+            }, 1000);
+        }
+    }    
 
     addPlayer(player) {
         console.log('Adding player to map:', player.id);
@@ -287,25 +249,6 @@ export class GameMap {
         return cells;
     }
 
-    addBomb(bomb) {
-        const { x, y } = bomb.position;
-        if (this.grid[y][x]) {
-            this.grid[y][x].hasBomb = true;
-            this.activeBombs.set(bomb.id, bomb);
-        }
-    }
-
-    removeBomb(bombId) {
-        const bomb = this.activeBombs.get(bombId);
-        if (bomb) {
-            const { x, y } = bomb.position;
-            if (this.grid[y][x]) {
-                this.grid[y][x].hasBomb = false;
-            }
-            this.activeBombs.delete(bombId);
-        }
-    }
-
     checkCollision(x, y) {
         const CELL_SIZE = 40;
         const PLAYER_SIZE = 30;
@@ -349,6 +292,62 @@ export class GameMap {
         }
         
         return false;
+    }
+
+    render() {
+        // Create map container if it doesn't exist
+        let mapContainer = document.querySelector('.map-container');
+        if (!mapContainer) {
+            mapContainer = document.createElement('div');
+            mapContainer.className = 'map-container';
+            const root = document.getElementById('root');
+            if (!root) {
+                console.error('Root element not found');
+                return;
+            }
+            root.appendChild(mapContainer);
+        }
+
+        // Clear existing map content
+        mapContainer.innerHTML = '';
+
+        // Create and append map grid
+        const mapGrid = document.createElement('div');
+        mapGrid.className = 'map-grid';
+        mapContainer.appendChild(mapGrid);
+
+        // Render each cell
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.x = x;
+                cell.dataset.y = y;
+
+                // Add cell type classes
+                const cellData = this.grid[y][x];
+                if (cellData && cellData.type !== 'empty') {
+                    cell.classList.add(cellData.type);
+                }
+
+                // Add power-ups, bombs, and explosions
+                if (cellData) {
+                    if (cellData.powerUp) {
+                        cell.classList.add('power-up', cellData.powerUp.type);
+                    }
+                    if (cellData.bomb) {
+                        cell.classList.add('bomb');
+                    }
+                    if (cellData.explosion) {
+                        cell.classList.add('explosion');
+                    }
+                }
+
+                mapGrid.appendChild(cell);
+            }
+        }
+
+        // removed player render here because it happens in game render
     }
 }
 

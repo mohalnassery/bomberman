@@ -283,7 +283,7 @@ export class Lobby extends Component {
     }
 
     handleGameState(data) {
-        const { players, readyPlayers, levelVotes, selectedLevel } = data;
+        const { players, readyPlayers, levelVotes, selectedLevel, gameStatus } = data;
         
         // Update store with new state
         this.store.setState({
@@ -296,9 +296,13 @@ export class Lobby extends Component {
             selectedLevel,
             playerCount: players.length
         });
-        
-        this.updateVotesDisplay();
-        this.render();
+        switch (gameStatus) {
+            case 'running':
+                this.startGame();
+            default:
+                this.updateVotesDisplay();
+                this.render();
+        }
     }
 
     handleLevelVoted(data) {
@@ -384,7 +388,6 @@ export class Lobby extends Component {
             const state = this.store.getState();
             if (state.countdown <= 1) {
                 clearInterval(countdownInterval);
-                this.startGame();
             } else {
                 this.store.setState({ countdown: state.countdown - 1 });
             }
