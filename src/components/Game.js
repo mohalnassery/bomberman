@@ -194,17 +194,20 @@ export class Game extends Component {
     handleGameState(data) {
         console.log('Received game state:', data);
 
-        // Load map only once
-        if (data.selectedLevel && !this.mapLoaded) {
+        // Load map for all players if game is running and map not loaded
+        if (data.gameStatus === 'running' && !this.mapLoaded && data.grid) {
             console.log('Loading level:', data.selectedLevel);
-
+            
             this.map.loadLevel(data.selectedLevel, data.grid)
                 .then(() => {
                     this.mapLoaded = true;
                     console.log('Map loaded successfully');
+                    // Update player positions after map loads
                     data.players?.forEach(playerData => {
-                        let player = this.players.get(playerData.id);
-                        player.position = playerData.position || this.map.getPlayerStartPosition(index) || { x: 0, y: 0 } // Provide default position
+                        const player = this.players.get(playerData.id);
+                        if (player && playerData.position) {
+                            player.position = playerData.position;
+                        }
                     });
                     this.render(); // Force render after map loads
                 })
@@ -223,21 +226,23 @@ export class Game extends Component {
                     id: playerData.id,
                     nickname: playerData.nickname,
                     isLocal: playerData.id === this.localPlayerId,
-                    position: playerData.position || this.map.getPlayerStartPosition(index) || { x: 0, y: 0 } // Provide default position
+                    position: playerData.position || this.map.getPlayerStartPosition(index) || { x: 0, y: 0 }
                 });
                 this.players.set(playerData.id, player);
-                this.map.addPlayer(player); // Transition this out eventually
+                this.map.addPlayer(player);
             }
 
-            // Only update position if valid position data exists
+            // Update player position if valid
             if (playerData.position && typeof playerData.position.x === 'number' && typeof playerData.position.y === 'number') {
                 player.updatePosition(playerData.position);
             }
-            if (!this.isRunning) {
-                this.isRunning = true;
-                this.gameLoop()
-            }
         });
+
+        // Start game loop if not running
+        if (data.gameStatus === 'running' && !this.isRunning) {
+            this.isRunning = true;
+            this.gameLoop();
+        }
     }
 
     handlePlayerLeave(data) {

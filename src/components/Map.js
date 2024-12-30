@@ -19,18 +19,39 @@ export class GameMap {
             this.activeBombs.clear();
             this.explosions.clear();
 
-            // save serverGrid as local 
-            this.grid = serverGrid;
-            
+            // Initialize grid with proper dimensions
+            this.grid = Array(this.height).fill().map(() => 
+                Array(this.width).fill().map(() => ({
+                    type: 'empty',
+                    powerUp: null,
+                    bomb: null
+                }))
+            );
+
+            // Copy server grid data if provided
+            if (serverGrid) {
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        if (serverGrid[y] && serverGrid[y][x]) {
+                            this.grid[y][x] = { ...serverGrid[y][x] };
+                        }
+                    }
+                }
+            }
+
             // Store player starting positions
             this.playerStartPositions = new Map();
             for (let y = 0; y < this.height; y++) {
                 for (let x = 0; x < this.width; x++) {
                     if (this.grid[y][x].playerStart) {
-                        this.playerStartPositions.set(this.grid.playerStart, {x, y});
+                        this.playerStartPositions.set(
+                            this.grid[y][x].playerStart,
+                            {x, y}
+                        );
                     }
                 }
             }
+
             this.currentLevel = levelNumber;
             return true;
         } catch (error) {
@@ -316,6 +337,12 @@ export class GameMap {
         mapGrid.className = 'map-grid';
         mapContainer.appendChild(mapGrid);
 
+        // Ensure grid exists before rendering
+        if (!this.grid || !this.grid.length) {
+            console.error('No grid data available');
+            return;
+        }
+
         // Render each cell
         for (let y = 0; y < this.height; y++) {
             for (let x = 0; x < this.width; x++) {
@@ -333,7 +360,7 @@ export class GameMap {
                 // Add power-ups, bombs, and explosions
                 if (cellData) {
                     if (cellData.powerUp) {
-                        cell.classList.add('power-up', cellData.powerUp.type);
+                        cell.classList.add('power-up', `power-up-${cellData.powerUp}`);
                     }
                     if (cellData.bomb) {
                         cell.classList.add('bomb');
@@ -346,8 +373,6 @@ export class GameMap {
                 mapGrid.appendChild(cell);
             }
         }
-
-        // removed player render here because it happens in game render
     }
 }
 
