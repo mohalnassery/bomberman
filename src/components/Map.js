@@ -109,10 +109,9 @@ export class GameMap {
         }
     }
 
-    placeBomb(id, x, y, range, playerId) {
+    placeBomb(bombId, x, y, range, playerId) {
         if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
             this.activeBombs.set(bombId, {
-                id,
                 position: { x, y },
                 range,
                 playerId
@@ -130,7 +129,7 @@ export class GameMap {
         return this.grid[y][x].bomb !== null && this.grid[y][x].bomb !== undefined;
     }
 
-    explodeBomb(bombId) {
+    explodeBomb(bombId, destroyedBlocks, affectedPositions) {
         const bomb = this.activeBombs.get(bombId)
         if (bomb) {
             this.activeBombs.delete(bomb.id);

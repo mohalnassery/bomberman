@@ -25,6 +25,8 @@ export class Game extends Component {
         this.handleGameState = this.handleGameState.bind(this);
         this.handlePlayerLeave = this.handlePlayerLeave.bind(this);
         this.handlePlayerMove = this.handlePlayerMove.bind(this);
+        this.handleBombPlaced = this.handleBombPlaced.bind(this);
+        this.handleBombExplosion = this.handleBombExplosion.bind(this);
         this.handleGameOver = this.handleGameOver.bind(this);
 
         this.setupWebSocket();
@@ -286,7 +288,7 @@ export class Game extends Component {
         affectedPlayers.forEach(playerId => {
             const player = this.players.get(playerId);
             if (player) {
-                player.handleExplosion();
+                player.takeDamage();
                 if (player.lives <= 0 && playerId === this.localPlayerId) {
                     this.enterSpectatorMode();
                 }

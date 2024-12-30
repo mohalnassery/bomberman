@@ -191,6 +191,7 @@ export class Player {
         const bombY = Math.floor(this.position.y);
 
         this.activeBombs++;
+        console.log("sendBomb")
         webSocket.send('placeBomb', {
             position: { x: bombX, y: bombY },
             range: this.flameRange,
@@ -300,17 +301,6 @@ export class Player {
                 powerUpsCollected: this.powerUpsCollected
             }
         });
-    }
-
-    handleExplosion(explosionPosition) {
-        const dx = Math.abs(this.position.x - explosionPosition.x);
-        const dy = Math.abs(this.position.y - explosionPosition.y);
-        
-        // Check if player is in explosion range (1 tile)
-        if (dx <= 1 && dy <= 1) {
-            return this.takeDamage();
-        }
-        return false;
     }
 
     static connectedPlayers = new Set();

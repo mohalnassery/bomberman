@@ -189,7 +189,7 @@ class GameServer {
         const bomb = {
             id: this.gameState.bombs.size+1,
             position: position,
-            playerId: data.playerId,
+            playerId: playerId,
             range: data.range,
             timeRemaining: 3
         };
@@ -206,6 +206,7 @@ class GameServer {
     }
 
     handleBombExplosion(bombId, bomb) {
+        console.log("BOOOM")
         const affectedPositions = this.calculateExplosionArea(bomb.position, bomb.range);
         const chainReactionBombs = new Set();
         const destroyedBlocks = new Set();
@@ -258,6 +259,7 @@ class GameServer {
         this.gameState.grid[bomb.position.y][bomb.position.x].bomb = null
         this.gameState.bombs.delete(bombId);
         
+        console.log("send explosion")
         // Broadcast explosion event
         this.broadcast('bombExplosion', {
             bombId,
@@ -629,6 +631,8 @@ class GameServer {
             const lines = levelData.split('\n')
                 .map(line => line.trim())
                 .filter(line => line);
+
+            const spawnPoints = new Array(4)
             
             for (let y = 0; y < this.mapHeight; y++) {
                 this.gameState.grid[y] = [];
@@ -657,20 +661,23 @@ class GameServer {
                         case '2':
                         case '3':
                         case '4':
+                            // Keep track of spawn positions
                             this.gameState.grid[y][x].playerStart = char;
                             this.gameState.grid[y][x].type = 'empty';
                             const playerId = parseInt(char)
-                            if (this.gameState.players.length <= playerId) {
-                                this.gameState.players[playerId - 1].position = {x,y}
-                            }
+                            spawnPoints[playerId - 1] = {x,y}
                             break;
                         default:
-                            // Keep track of spawn positions
                             this.gameState.grid[y][x].type = 'empty';
                             break;
                     }
                 }
             }
+
+            // apply spawn points
+            this.gameState.players.forEach((player) => {
+                player.position = spawnPoints.shift()
+            })
             
             this.gameState.level = levelName;
             console.log(`Server: Level ${levelName} initialized`);
