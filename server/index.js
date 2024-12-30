@@ -179,22 +179,27 @@ class GameServer {
 
     }
 
-    handleBombPlacement(data) {
-        const player = this.gameState.players.get(data.playerId);
+    handleBombPlacement(ws, data) {
+        const playerId = ws.playerId;
+        const position = data.position;
+        if (!position || this.gameState.grid[position.y][position.x].bomb) return;
+        const player = this.gameState.players.get(playerId);
         if (!player) return;
 
         const bomb = {
             id: this.gameState.bombs.size+1,
-            position: data.position,
+            position: position,
             playerId: data.playerId,
             range: data.range,
             timeRemaining: 3
         };
 
         this.gameState.bombs.set(bomb.id, bomb);
-        this.gameState.grid[bomb.position.y,bomb.position.x].bomb = bomb
+        this.gameState.grid[bomb.position.y][bomb.position.x].bomb = bomb
 
         player.bombsPlaced++;
+
+        console.log("bomb placed successfully", data)
 
         // Broadcast bomb placement to all clients
         this.broadcast('bombPlaced', bomb);
@@ -387,7 +392,7 @@ class GameServer {
                         this.handlePlayerMove(ws, data.payload);
                         break;
                     case 'placeBomb':
-                        this.handleBombPlacement()
+                        this.handleBombPlacement(ws, data.payload)
                         break;
                     case 'requestSync':
                         this.sendGameState(ws);
@@ -669,6 +674,7 @@ class GameServer {
             
             this.gameState.level = levelName;
             console.log(`Server: Level ${levelName} initialized`);
+            console.log(this.gameState.grid)
             
             // Broadcast the updated game state with the new level
             this.broadcast('levelLoaded', {
@@ -705,7 +711,7 @@ class GameServer {
         if (this.gameState.gameStatus !== 'waiting') return;
         
         this.gameState.gameStatus = 'countdown';
-        let countdown = 10;
+        let countdown = 3;
         this.broadcast('gameStarting',{ countdown });
         
         const timer = setInterval(() => {

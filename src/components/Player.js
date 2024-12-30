@@ -190,12 +190,8 @@ export class Player {
         const bombX = Math.floor(this.position.x);
         const bombY = Math.floor(this.position.y);
 
-        // Check if there's already a bomb at this position
-        if (this.gameMap.hasBomb(bombX, bombY)) return;
-
         this.activeBombs++;
         webSocket.send('placeBomb', {
-            playerId: this.id,
             position: { x: bombX, y: bombY },
             range: this.flameRange,
             timestamp: Date.now()

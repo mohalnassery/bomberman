@@ -19,7 +19,6 @@ export class Game extends Component {
         this.spectatorMode = false;
         this.lastFrameTime = 0;
         this.stateBuffer = [];
-        this.mapLoaded = false;
         this.interpolationDelay = 100;
 
         // Bind event handlers
@@ -29,6 +28,7 @@ export class Game extends Component {
         this.handleGameOver = this.handleGameOver.bind(this);
 
         this.setupWebSocket();
+        this.start();
     }
 
     // -- GAMELOOP FUNCTIONS --
@@ -178,9 +178,9 @@ export class Game extends Component {
 
         // Add a general message listener to debug what's coming in
         webSocket.socket.addEventListener('message', (event) => {
-            console.log('Raw WebSocket message received:', event.data);
+            //console.log('Raw WebSocket message received:', event.data);
             const data = JSON.parse(event.data);
-            console.log('Parsed message:', data);
+            //console.log('Parsed message:', data);
         });
 
         webSocket.on('gameState', this.handleGameState);
@@ -195,25 +195,21 @@ export class Game extends Component {
         console.log('Received game state:', data);
 
         // Load map for all players if game is running and map not loaded
-        if (data.gameStatus === 'running' && !this.mapLoaded && data.grid) {
+        if (data.gameStatus === 'running' && !this.map.isLoaded && data.grid && data.grid.length) {
             console.log('Loading level:', data.selectedLevel);
             
             this.map.loadLevel(data.selectedLevel, data.grid)
-                .then(() => {
-                    this.mapLoaded = true;
-                    console.log('Map loaded successfully');
-                    // Update player positions after map loads
-                    data.players?.forEach(playerData => {
-                        const player = this.players.get(playerData.id);
-                        if (player && playerData.position) {
-                            player.position = playerData.position;
-                        }
-                    });
-                    this.render(); // Force render after map loads
-                })
-                .catch(error => {
-                    console.error('Failed to load map:', error);
+            if (this.map.isLoaded) {
+                data.players?.forEach(playerData => {
+                    const player = this.players.get(playerData.id);
+                    if (player && playerData.position) {
+                        player.position = playerData.position;
+                    }
                 });
+                console.log('Map loaded successfully');
+                // Update player positions after map loads
+                this.render(); // Force render after map loads
+            }
         }
 
         // Update all players from game state

@@ -11,9 +11,11 @@ export class GameMap {
         this.explosions = new Map();
         this.players = new Map();
         this.playerStartPositions = new Map(); // Store player starting positions
+        this.isLoaded = false
     }
 
-    async loadLevel(levelNumber, serverGrid) {
+    loadLevel(levelNumber, serverGrid) {
+        if (this.isLoaded) return
         try {
             // Clear existing state
             this.activeBombs.clear();
@@ -37,6 +39,7 @@ export class GameMap {
                         }
                     }
                 }
+                this.isLoaded = true
             }
 
             // Store player starting positions
