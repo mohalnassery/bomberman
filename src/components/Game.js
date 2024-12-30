@@ -110,8 +110,9 @@ export class Game extends Component {
             player.update(deltaTime);
 
             // If moved and no collision, update position
-            if (player.isMoving && !this.map.checkCollision(player.position.x, player.position.y, player.id)) {
+            if (player.isMoving) {
                 // Update visual position immediately for local player
+                player.position = this.map.avoidCollision(player.position.x, player.position.y)
                 player.updatePosition(player.position)
                 webSocket.send('playerMove', {
                     position: player.position,
@@ -186,7 +187,7 @@ export class Game extends Component {
         });
 
         webSocket.on('gameState', this.handleGameState);
-        //webSocket.on('playerMove', this.handlePlayerMove);
+        webSocket.on('playerMove', this.handlePlayerMove);
         webSocket.on('playerLeave', this.handlePlayerLeave);
         webSocket.on('gameOver', this.handleGameOver);
         webSocket.on('bombPlaced',this.handleBombPlaced);
@@ -227,7 +228,6 @@ export class Game extends Component {
                     position: playerData.position || this.map.getPlayerStartPosition(index) || { x: 0, y: 0 }
                 });
                 this.players.set(playerData.id, player);
-                this.map.addPlayer(player);
             }
 
             // Update player position if valid
@@ -262,10 +262,10 @@ export class Game extends Component {
 
     handleBombPlaced(data) {
         const { id, playerId, position, range, timestamp } = data;
-        const player = this.players.get(playerId);
+        const bomber = this.players.get(playerId);
 
-        if (player && !this.map.hasBomb(position.x, position.y)) {
-            player.activeBombs++;
+        if (bomber && !this.map.hasBomb(position.x, position.y)) {
+            bomber.activeBombs++;
             this.map.placeBomb(id, position.x, position.y, range, playerId);
             // removed Schedule bomb explosion because that is a server side thing
         }
@@ -278,8 +278,12 @@ export class Game extends Component {
             destroyedBlocks,
             affectedPlayers,
             chainReaction,
+            bomberId,
             timestamp
         } = data;
+
+        const bomber = this.players.get(bomberId)
+        bomber.activeBombs--;
 
         // Remove the bomb & blocks and add the explosion effect
         this.map.explodeBomb(bombId, destroyedBlocks, affectedPositions);

@@ -9,7 +9,6 @@ export class GameMap {
         this.currentLevel = null;
         this.activeBombs = new Map();
         this.explosions = new Map();
-        this.players = new Map();
         this.playerStartPositions = new Map(); // Store player starting positions
         this.isLoaded = false
     }
@@ -133,7 +132,7 @@ export class GameMap {
         const bomb = this.activeBombs.get(bombId)
         if (bomb) {
             this.activeBombs.delete(bomb.id);
-            this.grid[bomb.position.y][this.bomb.position.x].bomb = null;
+            this.grid[bomb.position.y][bomb.position.x].bomb = null;
         }
 
         // Handle destroyed blocks and show animations
@@ -183,28 +182,6 @@ export class GameMap {
             }, 1000);
         }
     }    
-
-    addPlayer(player) {
-        console.log('Adding player to map:', player.id);
-        this.players.set(player.id, player);
-        console.log('Current players in map:', Array.from(this.players.keys()));
-    }
-
-    removePlayer(playerId) {
-        const player = this.players.get(playerId);
-        if (player) {
-            // Remove player's visual elements
-            const cells = document.querySelectorAll(`.player-${playerId}`);
-            cells.forEach(cell => {
-                cell.classList.remove(`player-${playerId}`);
-                const playerChar = cell.querySelector('.player-character');
-                const nameTag = cell.querySelector('.player-name');
-                if (playerChar) playerChar.remove();
-                if (nameTag) nameTag.remove();
-            });
-            this.players.delete(playerId);
-        }
-    }
 
     handleBombExplosion(bomb) {
         const affectedCells = this.calculateExplosionCells(bomb);
@@ -272,49 +249,56 @@ export class GameMap {
         return cells;
     }
 
-    checkCollision(x, y) {
-        const CELL_SIZE = 40;
-        const PLAYER_SIZE = 30;
-        const COLLISION_TOLERANCE = 10;
-        
-        const cellX = Math.floor(x);
-        const cellY = Math.floor(y);
-        
-        const playerCenterX = x * CELL_SIZE + PLAYER_SIZE/2;
-        const playerCenterY = y * CELL_SIZE + PLAYER_SIZE/2;
-        
-        for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-                const checkX = cellX + dx;
-                const checkY = cellY + dy;
-                
-                if (checkX < 0 || checkX >= this.width || checkY < 0 || checkY >= this.height) {
-                    continue;
-                }
-                
-                const cell = this.grid[checkY][checkX];
-                
-                if (cell && (
-                    cell.type === 'wall' || 
-                    cell.type === 'block' || 
-                    cell.bomb
-                )) {
-                    const cellCenterX = checkX * CELL_SIZE + CELL_SIZE/2;
-                    const cellCenterY = checkY * CELL_SIZE + CELL_SIZE/2;
-                    
-                    const dx = Math.abs(playerCenterX - cellCenterX);
-                    const dy = Math.abs(playerCenterY - cellCenterY);
-                    
-                    const collisionThreshold = (CELL_SIZE + PLAYER_SIZE) / 2 - COLLISION_TOLERANCE;
-                    if (dx < collisionThreshold && dy < collisionThreshold) {
-                        console.log('Collision detected at:', checkX, checkY);
-                        return true;
-                    }
-                }
-            }
+    avoidCollision(x, y) {
+
+        const cellX = Math.round(x);
+        const cellY = Math.round(y);
+
+        let newX = x;
+        let newY = y;
+
+        if (cellY > 0) {
+            const cell = this.grid[cellY - 1][cellX]
+            if (cell && (
+                cell.type === 'wall' || 
+                cell.type === 'block' || 
+                cell.bomb
+            )) {
+                newY = Math.max(cellY,newY)
+             }
         }
-        
-        return false;
+        if (cellY <= this.height) {
+            const cell = this.grid[cellY + 1][cellX]
+            if (cell && (
+                cell.type === 'wall' || 
+                cell.type === 'block' || 
+                cell.bomb
+            )) {
+                newY = Math.min(cellY,newY)
+             }
+        }
+        if (cellX > 0) {
+            const cell = this.grid[cellY][cellX - 1]
+            if (cell && (
+                cell.type === 'wall' || 
+                cell.type === 'block' || 
+                cell.bomb
+            )) {
+                newX = Math.max(cellX, newX)
+             }
+        }
+        if (cellY <= this.width) {
+            const cell = this.grid[cellY][cellX + 1]
+            if (cell && (
+                cell.type === 'wall' || 
+                cell.type === 'block' || 
+                cell.bomb
+            )) {
+                newX = Math.min(cellX, newX)
+             }
+        }
+
+        return {x: newX, y: newY}
     }
 
     render() {

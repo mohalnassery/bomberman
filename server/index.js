@@ -171,9 +171,9 @@ class GameServer {
             timestamp: Date.now()
         })
 
-        const playerX = Math.floor(player.position.x);
-        const playerY = Math.floor(player.position.y);
-        if (this.gameState.grid[playerY][playerX].type === 'powerup') {
+        const playerX = Math.round(player.position.x);
+        const playerY = Math.round(player.position.y);
+        if (this.gameState.grid[playerY][playerX].type && this.gameState.grid[playerY][playerX].type === 'powerup') {
             this.handlePowerUpCollection(playerId,playerX,playerY)
         }
 
@@ -198,6 +198,7 @@ class GameServer {
         this.gameState.grid[bomb.position.y][bomb.position.x].bomb = bomb
 
         player.bombsPlaced++;
+        player.activeBombs++;
 
         console.log("bomb placed successfully", data)
 
@@ -236,8 +237,8 @@ class GameServer {
             this.gameState.players.forEach((player, playerId) => {
                 if (player.isDead) return;
                 
-                const playerX = Math.floor(player.position.x);
-                const playerY = Math.floor(player.position.y);
+                const playerX = Math.round(player.position.x);
+                const playerY = Math.round(player.position.y);
                 
                 if (playerX === pos.x && playerY === pos.y) {
                     affectedPlayers.add(playerId);
@@ -254,6 +255,9 @@ class GameServer {
                 }
             });
         });
+        
+        const bomber = this.gameState.players.get(bomb.playerId)
+        bomber.activeBombs--
 
         // Remove the exploded bomb
         this.gameState.grid[bomb.position.y][bomb.position.x].bomb = null
@@ -267,6 +271,7 @@ class GameServer {
             destroyedBlocks: Array.from(destroyedBlocks),
             affectedPlayers: Array.from(affectedPlayers),
             chainReaction: Array.from(chainReactionBombs),
+            bomberId: bomb.playerId,
             timestamp: Date.now()
         });
 
@@ -342,13 +347,13 @@ class GameServer {
         ];
         
         // Add center position
-        positions.push({ x: Math.floor(position.x), y: Math.floor(position.y) });
+        positions.push({ x: Math.round(position.x), y: Math.round(position.y) });
         
         // Check each direction
         directions.forEach(dir => {
             for (let i = 1; i <= range; i++) {
-                const x = Math.floor(position.x + (dir.x * i));
-                const y = Math.floor(position.y + (dir.y * i));
+                const x = Math.round(position.x + (dir.x * i));
+                const y = Math.round(position.y + (dir.y * i));
                 
                 // Check map boundaries
                 if (x < 0 || x >= this.mapWidth || y < 0 || y >= this.mapHeight) {

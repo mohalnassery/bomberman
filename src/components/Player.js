@@ -139,56 +139,11 @@ export class Player {
         }
     }
 
-    checkCollision() {
-        // Convert position to grid coordinates
-        const gridX = Math.floor(this.position.x);
-        const gridY = Math.floor(this.position.y);
-
-        // Check map boundaries
-        if (gridX < 0 || gridX >= this.gameMap.width || gridY < 0 || gridY >= this.gameMap.height) {
-            return true;
-        }
-
-        // Get cells that the player's hitbox would occupy
-        const cellsToCheck = [
-            this.gameMap.grid[gridY][gridX], // Target cell
-            // Check adjacent cells if player is between grid lines
-            this.gameMap.grid[Math.ceil(this.position.y)][gridX],
-            this.gameMap.grid[gridY][Math.ceil(this.position.x)],
-            this.gameMap.grid[Math.ceil(this.position.y)][Math.ceil(this.position.x)]
-        ].filter(Boolean); // Remove undefined cells
-
-        // Check for collisions with walls, blocks, or other players
-        return cellsToCheck.some(cell => 
-            cell.type === 'wall' || 
-            cell.type === 'block' || 
-            (cell.hasPlayer && !cell.hasPlayer[this.id]) ||
-            cell.hasBomb
-        );
-    }
-
-    // Method to handle server position updates
-    updateServerPosition(serverPos, timestamp) {
-        // Update target position for interpolation
-        this.targetPosition = { ...serverPos };
-        this.serverPosition = { ...serverPos };
-
-        // If difference is too large, snap to server position
-        const dx = serverPos.x - this.position.x;
-        const dy = serverPos.y - this.position.y;
-        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-            this.position = { ...serverPos };
-        } else {
-            // Otherwise smoothly interpolate
-            this.targetPosition = { ...serverPos };
-        }
-    }
-
     placeBomb() {
         if (this.activeBombs >= this.maxBombs || this.isDead) return;
 
-        const bombX = Math.floor(this.position.x);
-        const bombY = Math.floor(this.position.y);
+        const bombX = Math.round(this.position.x);
+        const bombY = Math.round(this.position.y);
 
         this.activeBombs++;
         console.log("sendBomb")
@@ -197,22 +152,6 @@ export class Player {
             range: this.flameRange,
             timestamp: Date.now()
         });
-    }
-
-    checkPowerUps() {
-        const currentCell = this.gameMap.grid[Math.floor(this.position.y)][Math.floor(this.position.x)];
-        if (currentCell && currentCell.type === 'powerup') {
-            const powerUp = currentCell.powerUp;
-            webSocket.send('collectPowerUp', {
-                playerId: this.id,
-                position: {
-                    x: Math.floor(this.position.x),
-                    y: Math.floor(this.position.y)
-                },
-                type: powerUp.type,
-                timestamp: Date.now()
-            });
-        }
     }
 
     handlePowerUp(type) {
@@ -352,7 +291,7 @@ export class Player {
     updatePosition(position) {
         this.position = position;
         this.element.style.transform = 
-            `translate(${position.x * 32}px, ${position.y * 32}px)`;
+            `translate(${position.x * 40}px, ${position.y * 40}px)`;
         console.log(`Updated position for player ${this.id} to:`, position);
     }
 
