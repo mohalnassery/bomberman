@@ -195,7 +195,7 @@ export class Game extends Component {
     }
 
     handleGameState(data) {
-        console.log('Received game state:', data);
+        //console.log('Received game state:', data);
 
         // Load map for all players if game is running and map not loaded
         if (data.gameStatus === 'running' && !this.map.isLoaded && data.grid && data.grid.length) {
@@ -225,7 +225,7 @@ export class Game extends Component {
                     id: playerData.id,
                     nickname: playerData.nickname,
                     isLocal: playerData.id === this.localPlayerId,
-                    position: playerData.position || this.map.getPlayerStartPosition(index) || { x: 0, y: 0 }
+                    position: playerData.position || playerData.spawnPosition || this.map.getPlayerStartPosition(index) || { x: 0, y: 0 }
                 });
                 this.players.set(playerData.id, player);
             }
@@ -246,17 +246,16 @@ export class Game extends Component {
     handlePlayerLeave(data) {
         const { playerId } = data;
         this.players.delete(playerId);
-        this.map.removePlayer(playerId);
     }
 
     handlePlayerMove(data) {
         const { playerId, position } = data;
-        console.log('Handling move for player:', playerId, position);
+        //console.log('Handling move for player:', playerId, position);
 
         const player = this.players.get(playerId);
         if (player) {
             player.updatePosition(position);
-            console.log(`Updated position for player ${playerId} to:`, position);
+            //console.log(`Updated position for player ${playerId} to:`, position);
         }
     }
 
@@ -281,21 +280,23 @@ export class Game extends Component {
             bomberId,
             timestamp
         } = data;
+        console.log("explosion data: ", data)
 
         const bomber = this.players.get(bomberId)
-        bomber.activeBombs--;
+        bomber.activeBombs--; 
 
         // Remove the bomb & blocks and add the explosion effect
         this.map.explodeBomb(bombId, destroyedBlocks, affectedPositions);
 
         // Handle affected players
-        affectedPlayers.forEach(playerId => {
+        affectedPlayers.forEach((playerId, index) => {
             const player = this.players.get(playerId);
             if (player) {
                 player.takeDamage();
                 if (player.lives <= 0 && playerId === this.localPlayerId) {
                     this.enterSpectatorMode();
                 }
+                player.position = player.spawnPosition || this.map.getPlayerStartPosition(index) || player.position
             }
         });
     }
@@ -361,7 +362,8 @@ export class Game extends Component {
         this.spectatorMode = true;
 
         // Disable controls
-        this.localPlayer.disableControls();
+        const localPlayer = this.players.get(this.localPlayerId)
+        localPlayer.disableControls();
 
         // Add spectator UI
         const spectatorUI = document.createElement('div');

@@ -212,18 +212,23 @@ class GameServer {
         const chainReactionBombs = new Set();
         const destroyedBlocks = new Set();
         const affectedPlayers = new Set();
+
         
+        const bomber = this.gameState.players.get(bomb.playerId)
+        bomber.activeBombs--
         // Process each position in the explosion range
         affectedPositions.forEach(pos => {
             
             // Check for blocks
-            if (this.gameState.grid[pos.y][pos.x].type === "block") {
+            if (this.gameState.grid[pos.y][pos.x].type === 'block') {
                 destroyedBlocks.add(`${pos.x},${pos.y}`);
                 if (this.gameState.grid[pos.y][pos.x].powerUp) {
                     this.gameState.grid[pos.y][pos.x].type = "powerup"
                 } else {
                     this.gameState.grid[pos.y][pos.x].type = "empty"
                 }
+            } else {
+                console.log(this.gameState.grid[pos.y][pos.x].type)
             }
             
             // Check for chain reactions with other bombs
@@ -235,29 +240,20 @@ class GameServer {
             // Maybe we can also keep track of players in the grid? might be overcomplicating other stuff by doing that though
             // Check for affected players
             this.gameState.players.forEach((player, playerId) => {
-                if (player.isDead) return;
-                
-                const playerX = Math.round(player.position.x);
-                const playerY = Math.round(player.position.y);
-                
-                if (playerX === pos.x && playerY === pos.y) {
+                if (!player.isDead && Math.round(player.position.x) === pos.x && Math.round(player.position.y) === pos.y) {
                     affectedPlayers.add(playerId);
                     player.lives--;
+                    player.position = player.spawnPosition
                     if (player.lives <= 0) {
                         player.isDead = true;
                         if (bomb.playerId !== playerId) {
-                            const killer = this.gameState.players.get(bomb.playerId);
-                            if (killer) {
-                                killer.killCount++;
-                            }
+                            bomber.killCount++;
                         }
                     }
                 }
             });
         });
         
-        const bomber = this.gameState.players.get(bomb.playerId)
-        bomber.activeBombs--
 
         // Remove the exploded bomb
         this.gameState.grid[bomb.position.y][bomb.position.x].bomb = null
@@ -356,7 +352,7 @@ class GameServer {
                 const y = Math.round(position.y + (dir.y * i));
                 
                 // Check map boundaries
-                if (x < 0 || x >= this.mapWidth || y < 0 || y >= this.mapHeight) {
+                if (x < 0 || x >= this.mapWidth || y < 0 || y >= this.mapHeight || this.gameState.grid[y][x] === "wall") {
                     break;
                 }
                 
@@ -364,7 +360,7 @@ class GameServer {
                 positions.push({ x, y });
                 
                 // Stop if we hit a wall
-                if (this.gameState.grid[y][x] === "block" || this.gameState.grid[y][x] === "wall") {
+                if (this.gameState.grid[y][x] === 'block') {
                     break;
                 }
             }
@@ -637,7 +633,7 @@ class GameServer {
                 .map(line => line.trim())
                 .filter(line => line);
 
-            const spawnPoints = new Array(4)
+            const spawnPositions = new Array(4)
             
             for (let y = 0; y < this.mapHeight; y++) {
                 this.gameState.grid[y] = [];
@@ -670,7 +666,7 @@ class GameServer {
                             this.gameState.grid[y][x].playerStart = char;
                             this.gameState.grid[y][x].type = 'empty';
                             const playerId = parseInt(char)
-                            spawnPoints[playerId - 1] = {x,y}
+                            spawnPositions[playerId - 1] = {x,y}
                             break;
                         default:
                             this.gameState.grid[y][x].type = 'empty';
@@ -681,7 +677,8 @@ class GameServer {
 
             // apply spawn points
             this.gameState.players.forEach((player) => {
-                player.position = spawnPoints.shift()
+                player.spawnPosition = spawnPositions.shift()
+                player.position = player.spawnPosition
             })
             
             this.gameState.level = levelName;

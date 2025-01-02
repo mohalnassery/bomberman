@@ -140,12 +140,12 @@ export class Player {
     }
 
     placeBomb() {
+        console.log("activeBombs", this.activeBombs)
         if (this.activeBombs >= this.maxBombs || this.isDead) return;
 
         const bombX = Math.round(this.position.x);
         const bombY = Math.round(this.position.y);
 
-        this.activeBombs++;
         console.log("sendBomb")
         webSocket.send('placeBomb', {
             position: { x: bombX, y: bombY },
@@ -292,7 +292,7 @@ export class Player {
         this.position = position;
         this.element.style.transform = 
             `translate(${position.x * 40}px, ${position.y * 40}px)`;
-        console.log(`Updated position for player ${this.id} to:`, position);
+        //console.log(`Updated position for player ${this.id} to:`, position);
     }
 
     incrementScore(points = 1) {

@@ -129,6 +129,7 @@ export class GameMap {
     }
 
     explodeBomb(bombId, destroyedBlocks, affectedPositions) {
+        console.log("explode: ",destroyedBlocks, affectedPositions)
         const bomb = this.activeBombs.get(bombId)
         if (bomb) {
             this.activeBombs.delete(bomb.id);
@@ -145,6 +146,7 @@ export class GameMap {
                     cell.classList.remove('block', 'block-destroy');
                 }, 500);
             }
+            this.grid[y][x].type = "empty"
         });
 
         // Show explosion animation
@@ -160,7 +162,7 @@ export class GameMap {
     }    
 
     removePowerUp(position) {
-        const cellGrid = this.map.grid[position.y][position.x];
+        const cellGrid = this.grid[position.y][position.x];
         if (cellGrid && cellGrid.type === 'powerup') {
             cellGrid.type = 'empty';
             cellGrid.powerUp = null;
