@@ -30,30 +30,25 @@ export class GameMap {
             );
 
             // Copy server grid data if provided
+            // Store player starting positions
+            this.playerStartPositions = new Map();
             if (serverGrid) {
                 for (let y = 0; y < this.height; y++) {
                     for (let x = 0; x < this.width; x++) {
                         if (serverGrid[y] && serverGrid[y][x]) {
                             this.grid[y][x] = { ...serverGrid[y][x] };
+                            if (this.grid[y][x].playerStart) {
+                                this.playerStartPositions.set(
+                                    this.grid[y][x].playerStart,
+                                    {x, y}
+                                );
+                            }
                         }
                     }
                 }
                 this.isLoaded = true
             }
-
-            // Store player starting positions
-            this.playerStartPositions = new Map();
-            for (let y = 0; y < this.height; y++) {
-                for (let x = 0; x < this.width; x++) {
-                    if (this.grid[y][x].playerStart) {
-                        this.playerStartPositions.set(
-                            this.grid[y][x].playerStart,
-                            {x, y}
-                        );
-                    }
-                }
-            }
-
+            
             this.currentLevel = levelNumber;
             return true;
         } catch (error) {

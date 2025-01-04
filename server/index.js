@@ -65,12 +65,10 @@ class GameServer {
         this.gameState.gameStatus = 'running';
         
         // Initialize game state with selected level
-        this.initializeLevel(this.gameState.selectedLevel);
+        this.initializeLevel(this.gameState.selectedLevel)
+            .then(this.broadcastGameState.bind(this))
+            .then(this.startGameLoop.bind(this))
         
-        // Broadcast game start with selected level
-        this.broadcastGameState();
-
-        this.startGameLoop();
     }
 
     startGameLoop() {
@@ -85,7 +83,7 @@ class GameServer {
             this.gameState.lastUpdateTime = currentTime;
             
             this.updateGameState(deltaTime);
-            this.broadcastGameState();
+            //this.broadcastGameState();
         }, tickDuration);
     }
 
@@ -686,11 +684,11 @@ class GameServer {
             console.log(this.gameState.grid)
             
             // Broadcast the updated game state with the new level
-            this.broadcast('levelLoaded', {
-                level: levelName,
-                grid: this.gameState.grid,
-                timestamp: Date.now()
-            });
+            //this.broadcast('levelLoaded', {
+            //    level: levelName,
+            //    grid: this.gameState.grid,
+            //    timestamp: Date.now()
+            //});
             
         } catch (error) {
             console.error('Error initializing level:', error);

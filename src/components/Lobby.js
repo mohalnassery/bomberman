@@ -298,7 +298,7 @@ export class Lobby extends Component {
         });
         switch (gameStatus) {
             case 'running':
-                this.startGame();
+                this.startGame(data);
             default:
                 this.updateVotesDisplay();
                 this.render();
@@ -533,12 +533,15 @@ export class Lobby extends Component {
 
     // -- START GAME --
 
-    startGame() {
+    startGame(initialState) {
         const state = this.store.getState();
         const selectedLevel = state.selectedLevel || '1';  // Default to level 1 if no selection
         
         // Save the selected level to localStorage
         localStorage.setItem('selectedLevel', selectedLevel);
+
+        // Save initial grid
+        localStorage.setItem('initialState', JSON.stringify(initialState));
         
         // Don't proceed if player info is missing
         if (!this.playerId || !this.nickname) {

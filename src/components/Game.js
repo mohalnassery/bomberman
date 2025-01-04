@@ -55,22 +55,18 @@ export class Game extends Component {
 
             console.log('Starting game with level:', selectedLevel);
 
-            // Ensure root element exists
-            const root = document.getElementById('root');
-            if (!root) {
-                throw new Error('Root element not found');
-            }
-
-            // Clear the root element and add a loading indicator
-            root.innerHTML = '<div class="loading">Loading game...</div>';
-
             // Only connect if not already connected
             if (!webSocket.connected) {
                 await webSocket.connect();
             }
 
-            // Request initial game state from server
-            webSocket.send('requestSync');
+            const initialState = JSON.parse(localStorage.getItem('initialState'));
+            if (initialState) {
+                this.handleGameState(initialState)
+            } else {
+                // Request initial game state from server
+                webSocket.send('requestSync');
+            }
 
         } catch (error) {
             console.error('Failed to start game:', error);
@@ -195,10 +191,15 @@ export class Game extends Component {
     }
 
     handleGameState(data) {
-        //console.log('Received game state:', data);
+        console.log('Received game state:', data);
+        if (data.gameStatus !== "running") {
+            this.isRunning = false;
+            window.location.hash = '/';
+            return
+        }
 
         // Load map for all players if game is running and map not loaded
-        if (data.gameStatus === 'running' && !this.map.isLoaded && data.grid && data.grid.length) {
+        if (!this.map.isLoaded) {
             console.log('Loading level:', data.selectedLevel);
             
             this.map.loadLevel(data.selectedLevel, data.grid)
@@ -212,6 +213,8 @@ export class Game extends Component {
                 console.log('Map loaded successfully');
                 // Update player positions after map loads
                 this.render(); // Force render after map loads
+            } else {
+
             }
         }
 
