@@ -14,8 +14,8 @@ export class Game extends Component {
         this.isRunning = false;
         this.isGameOver = false;
         this.winner = null;
-        this.localPlayerId = props.playerInfo?.playerId || null;
-        this.nickname = props.playerInfo?.nickname || null;
+        this.localPlayerId = props?.playerInfo?.playerId || null;
+        this.nickname = props?.playerInfo?.nickname || null;
         this.spectatorMode = false;
         this.lastFrameTime = 0;
         this.stateBuffer = [];
@@ -40,9 +40,12 @@ export class Game extends Component {
             const playerInfo = JSON.parse(localStorage.getItem('playerInfo'));
             const playerSession = JSON.parse(localStorage.getItem('playerSession'));
 
-            if (!playerInfo || !playerSession) {
+            if (!playerInfo || !playerSession || !playerInfo.playerId) {
                 throw new Error('Missing player information');
             }
+            
+            this.localPlayerId = playerInfo.playerId;
+            this.nickname = playerInfo.nickname;
 
             // Get the selected level from session state or votes
             const gameState = playerSession.gameState || {};

@@ -37,28 +37,10 @@ export class App extends Component {
 
     async showGame() {
         this.cleanup();
-        
-        try {
-            const playerInfo = JSON.parse(localStorage.getItem('playerInfo'));
-            const playerSession = JSON.parse(localStorage.getItem('playerSession'));
-            
-            if (!playerInfo || !playerSession || !playerInfo.playerId) {
-                throw new Error('Missing player information');
-            }
 
-            const game = new Game({ 
-                playerInfo,
-                gameState: playerSession.gameState
-            });
-            
-            this.currentComponent = game;
-            await game.start();
-        } catch (error) {
-            console.error('Failed to start game:', error);
-            localStorage.removeItem('playerInfo');
-            localStorage.removeItem('playerSession');
-            window.location.hash = '/';
-        }
+        const game = new Game();
+        this.currentComponent = game;
+        game.render()
     }
 
     showNotFound() {
@@ -68,6 +50,9 @@ export class App extends Component {
     }
 
     render() {
+        if (this.currentComponent && typeof this.currentComponent.render === "function") {
+            return this.currentComponent.render()
+        }
         // Initial render handled by router
     }
 }

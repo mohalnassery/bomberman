@@ -1,6 +1,8 @@
 // src/index.js
 import { App } from './components/App.js';
+import { render } from './core/dom.js';
 
 const rootElement = document.getElementById('root');
 const app = new App();
-app.render(rootElement);
+render(app.render(), rootElement);
+
