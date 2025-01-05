@@ -21,7 +21,7 @@ export class GameMap {
             this.explosions.clear();
 
             // Initialize grid with proper dimensions
-            this.grid = Array(this.height).fill().map(() => 
+            this.grid = Array(this.height).fill().map(() =>
                 Array(this.width).fill().map(() => ({
                     type: 'empty',
                     powerUp: null,
@@ -40,7 +40,7 @@ export class GameMap {
                             if (this.grid[y][x].playerStart) {
                                 this.playerStartPositions.set(
                                     this.grid[y][x].playerStart,
-                                    {x, y}
+                                    { x, y }
                                 );
                             }
                         }
@@ -48,7 +48,7 @@ export class GameMap {
                 }
                 this.isLoaded = true
             }
-            
+
             this.currentLevel = levelNumber;
             return true;
         } catch (error) {
@@ -61,22 +61,22 @@ export class GameMap {
     getPlayerStartPosition(playerIndex) {
         // Convert index to player number (1-based)
         const playerNumber = String(playerIndex + 1);
-        
+
         // Get position from level file
         if (this.playerStartPositions.has(playerNumber)) {
             const pos = this.playerStartPositions.get(playerNumber);
             console.log(`Using level-defined position for player ${playerNumber}:`, pos);
             return pos;
         }
-        
-         // Fallback positions if not found in level
-         const fallbackPositions = [
-            {x: 1, y: 1},                        // Player 1: Top-left corner
-            {x: this.width-2, y: this.height-2}, // Player 2: Bottom-right corner
-            {x: this.width-2, y: 1},             // Player 3: Top-right corner
-            {x: 1, y: this.height-2}             // Player 4: Bottom-left corner
+
+        // Fallback positions if not found in level
+        const fallbackPositions = [
+            { x: 1, y: 1 },                        // Player 1: Top-left corner
+            { x: this.width - 2, y: this.height - 2 }, // Player 2: Bottom-right corner
+            { x: this.width - 2, y: 1 },             // Player 3: Top-right corner
+            { x: 1, y: this.height - 2 }             // Player 4: Bottom-left corner
         ];
-        
+
         const fallbackPos = fallbackPositions[playerIndex % 2];
         console.log(`Using fallback position for player ${playerNumber}:`, fallbackPos);
         return fallbackPos;
@@ -116,15 +116,15 @@ export class GameMap {
                 playerId
             };
         }
-    }    
+    }
 
     hasBomb(x, y) {
-        if (!this.grid || !Array.isArray(this.grid) || x < 0 || x >= this.width || y < 0 || y >= this.height ||!this.grid[y] || !this.grid[y][x] ) return false;
+        if (!this.grid || !Array.isArray(this.grid) || x < 0 || x >= this.width || y < 0 || y >= this.height || !this.grid[y] || !this.grid[y][x]) return false;
         return this.grid[y][x].bomb !== null && this.grid[y][x].bomb !== undefined;
     }
 
     explodeBomb(bombId, destroyedBlocks, affectedPositions) {
-        console.log("explode: ",destroyedBlocks, affectedPositions)
+        console.log("explode: ", destroyedBlocks, affectedPositions)
         const bomb = this.activeBombs.get(bombId)
         if (bomb) {
             this.activeBombs.delete(bomb.id);
@@ -147,14 +147,16 @@ export class GameMap {
         // Show explosion animation
         affectedPositions.forEach(pos => {
             const cell = $(`.cell[data-x="${pos.x}"][data-y="${pos.y}"]`);
+            this.grid[pos.y][pos.x].explosion = true
             if (cell) {
-                cell.classList.add('explosion');
+                //cell.classList.add('explosion');
                 setTimeout(() => {
-                    cell.classList.remove('explosion');
+                    //cell.classList.remove('explosion');
+                    this.grid[pos.y][pos.x].explosion = false
                 }, 1000);
             }
         });
-    }    
+    }
 
     removePowerUp(position) {
         const cellGrid = this.grid[position.y][position.x];
@@ -166,7 +168,7 @@ export class GameMap {
         // Remove power-up from map
         const cell = `.cell[data-x="${position.x}"][data-y="${position.y}"]`;
         if (cell) {
-            cell.classList.remove('power-up', `power-up-${type}`);
+            //cell.classList.remove('power-up', `power-up-${type}`);
 
             // Show collection animation
             const animation = document.createElement('div');
@@ -178,11 +180,11 @@ export class GameMap {
                 animation.remove();
             }, 1000);
         }
-    }    
+    }
 
     handleBombExplosion(bomb) {
         const affectedCells = this.calculateExplosionCells(bomb);
-        
+
         // Create explosion effect
         const explosion = {
             cells: affectedCells,
@@ -257,48 +259,54 @@ export class GameMap {
         if (cellY > 0) {
             const cell = this.grid[cellY - 1][cellX]
             if (cell && (
-                cell.type === 'wall' || 
-                cell.type === 'block' || 
+                cell.type === 'wall' ||
+                cell.type === 'block' ||
                 cell.bomb
             )) {
-                newY = Math.max(cellY,newY)
-             }
+                newY = Math.max(cellY, newY)
+            }
         }
         if (cellY <= this.height) {
             const cell = this.grid[cellY + 1][cellX]
             if (cell && (
-                cell.type === 'wall' || 
-                cell.type === 'block' || 
+                cell.type === 'wall' ||
+                cell.type === 'block' ||
                 cell.bomb
             )) {
-                newY = Math.min(cellY,newY)
-             }
+                newY = Math.min(cellY, newY)
+            }
         }
         if (cellX > 0) {
             const cell = this.grid[cellY][cellX - 1]
             if (cell && (
-                cell.type === 'wall' || 
-                cell.type === 'block' || 
+                cell.type === 'wall' ||
+                cell.type === 'block' ||
                 cell.bomb
             )) {
                 newX = Math.max(cellX, newX)
-             }
+            }
         }
         if (cellY <= this.width) {
             const cell = this.grid[cellY][cellX + 1]
             if (cell && (
-                cell.type === 'wall' || 
-                cell.type === 'block' || 
+                cell.type === 'wall' ||
+                cell.type === 'block' ||
                 cell.bomb
             )) {
                 newX = Math.min(cellX, newX)
-             }
+            }
         }
 
-        return {x: newX, y: newY}
+        return { x: newX, y: newY }
     }
 
     render() {
+        // Ensure grid exists before rendering
+        if (!this.grid || !this.grid.length) {
+            console.error('No grid data available');
+            return;
+        }
+
         // Create map container if it doesn't exist
         let mapContainer = document.querySelector('.map-container');
         if (!mapContainer) {
@@ -310,52 +318,64 @@ export class GameMap {
                 return;
             }
             root.appendChild(mapContainer);
+
+            // Create and append map grid
+            const mapGrid = document.createElement('div');
+            mapGrid.className = 'map-grid';
+            mapContainer.appendChild(mapGrid);
         }
 
         // Clear existing map content
-        mapContainer.innerHTML = '';
 
         // Create and append map grid
-        const mapGrid = document.createElement('div');
-        mapGrid.className = 'map-grid';
-        mapContainer.appendChild(mapGrid);
-
-        // Ensure grid exists before rendering
-        if (!this.grid || !this.grid.length) {
-            console.error('No grid data available');
-            return;
+        let mapGrid = document.querySelector('.map-grid');
+        if (!mapGrid) {
+            mapGrid = document.createElement('div');
+            mapGrid.className = 'map-grid';
+            mapContainer.appendChild(mapGrid);
         }
-
-        // Render each cell
-        for (let y = 0; y < this.height; y++) {
-            for (let x = 0; x < this.width; x++) {
-                const cell = document.createElement('div');
-                cell.className = 'cell';
-                cell.dataset.x = x;
-                cell.dataset.y = y;
-
-                // Add cell type classes
-                const cellData = this.grid[y][x];
-                if (cellData && cellData.type !== 'empty') {
-                    cell.classList.add(cellData.type);
+        if (mapGrid.children.length === 0) {
+            for (let y = 0; y < this.height; y++) {
+                for (let x = 0; x < this.width; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    mapGrid.appendChild(cell);
                 }
-
-                // Add power-ups, bombs, and explosions
-                if (cellData) {
-                    if (cellData.powerUp) {
-                        cell.classList.add('power-up', `power-up-${cellData.powerUp}`);
-                    }
-                    if (cellData.bomb) {
-                        cell.classList.add('bomb');
-                    }
-                    if (cellData.explosion) {
-                        cell.classList.add('explosion');
-                    }
-                }
-
-                mapGrid.appendChild(cell);
             }
         }
+        const cells = Array.from(mapGrid.children)
+        cells.forEach((cell) => {
+            const cellData = this.grid[cell.dataset.y][cell.dataset.x]
+            if (cellData) {
+                if (cellData.type !== 'empty' && !cell.classList.contains(cellData.type)) {
+                    cell.classList.add(cellData.type)
+                }
+                if (cellData.type !== 'block' && cell.classList.contains('block')) {
+                    cell.classList.remove('block');
+                }
+                if (cellData.type !== 'wall' && cell.classList.contains('wall')) {
+                    cell.classList.remove('wall');
+                }
+
+                if (cellData.powerUp && !cell.classList.contains(`power-up-${cellData.powerUp}`)) {
+                    cell.classList.add('power-up', `power-up-${cellData.powerUp}`);
+                } else if (!cellData.powerUp && cell.classList.contains(`power-up-${cellData.powerUp}`)) {
+                    cell.classList.remove('power-up', `power-up-${cellData.powerUp}`);
+                }
+                if (cellData.bomb && !cell.classList.contains('bomb')) {
+                    cell.classList.add('bomb');
+                } else if (!cellData.bomb && cell.classList.contains('bomb')) {
+                    cell.classList.remove('bomb');
+                }
+                if (cellData.explosion && !cell.classList.contains('explosion')) {
+                    cell.classList.add('explosion');
+                } else if (!cellData.explosion && cell.classList.contains('explosion')) {
+                    cell.classList.remove('explosion');
+                }
+            }
+        })
     }
 }
 

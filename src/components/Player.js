@@ -43,7 +43,7 @@ export class Player {
         this.keysPressed = {};
         this.speed = 4;
         this.isMoving = false;
-        
+
         // Bind methods
         this.handleKeyDown = this.handleKeyDown.bind(this);
         this.handleKeyUp = this.handleKeyUp.bind(this);
@@ -89,7 +89,7 @@ export class Player {
 
         const oldPosition = { ...this.position };
         this.isMoving = false;
-        
+
         // Calculate movement based on pressed keys
         const moveSpeed = this.speed * deltaTime;
 
@@ -114,10 +114,10 @@ export class Player {
 
     handleKeyDown(event) {
         if (!this.isLocal || this.isDead) return;
-        
+
         this.keysPressed[event.key] = true;
         console.log('Key pressed:', event.key, 'Keys state:', this.keysPressed);
-        
+
         // Handle bomb placement
         if (event.key === ' ') {
             this.placeBomb();
@@ -126,7 +126,7 @@ export class Player {
 
     handleKeyUp(event) {
         if (!this.isLocal || this.isDead) return;
-        
+
         this.keysPressed[event.key] = false;
         console.log('Key released:', event.key, 'Keys state:', this.keysPressed);
     }
@@ -171,14 +171,14 @@ export class Player {
 
     takeDamage() {
         if (this.isDead) return true;
-        
+
         this.lives--;
-        
+
         // Play damage sound
         const audio = new Audio('/assets/sounds/damage.mp3');
         audio.volume = 0.3;
-        audio.play().catch(() => {});
-        
+        audio.play().catch(() => { });
+
         // Add visual feedback
         const playerElement = $(`.player-${this.id}`);
         if (playerElement) {
@@ -192,13 +192,13 @@ export class Player {
             this.die();
             return true; // Player died
         }
-        
+
         // Player took damage but survived
         webSocket.send('playerDamaged', {
             playerId: this.id,
             lives: this.lives
         });
-        
+
         return false; // Player still alive
     }
 
@@ -206,7 +206,7 @@ export class Player {
         this.isDead = true;
         this.activeBombs = 0; // Clear active bombs on death
         this.keysPressed = {}; // Clear any pressed keys
-        
+
         // Update position if provided (for death animation)
         if (position) {
             this.position = position;
@@ -215,7 +215,7 @@ export class Player {
         // Play death sound
         const audio = new Audio('/assets/sounds/death.mp3');
         audio.volume = 0.3;
-        audio.play().catch(() => {});
+        audio.play().catch(() => { });
 
         // Create death animation
         const cell = $(`.cell[data-x="${Math.round(this.position.x)}"][data-y="${Math.round(this.position.y)}"]`);
@@ -223,7 +223,7 @@ export class Player {
             const deathEffect = document.createElement('div');
             deathEffect.className = 'death-effect';
             cell.appendChild(deathEffect);
-            
+
             // Remove death effect after animation
             setTimeout(() => {
                 deathEffect.remove();
@@ -231,7 +231,7 @@ export class Player {
         }
 
         // Notify other players
-        webSocket.send('playerDeath', { 
+        webSocket.send('playerDeath', {
             playerId: this.id,
             position: this.position,
             finalStats: {
@@ -264,7 +264,7 @@ export class Player {
         if (!hudContainer) return;
 
         hudContainer.innerHTML = '';
-        
+
         // Sort players by ID to ensure consistent order
         const players = Array.from(Player.connectedPlayers)
             .sort((a, b) => a.id.localeCompare(b.id));
@@ -273,7 +273,7 @@ export class Player {
             const playerHUD = document.createElement('div');
             playerHUD.className = 'player-stats';
             playerHUD.style.borderColor = player.color;
-            
+
             playerHUD.innerHTML = `
                 <div class="player-name" style="color: ${player.color}">${player.name}</div>
                 <div class="player-info">
@@ -283,14 +283,14 @@ export class Player {
                     <div>Speed: ${player.speed}</div>
                 </div>
             `;
-            
+
             hudContainer.appendChild(playerHUD);
         });
     }
 
     updatePosition(position) {
         this.position = position;
-        this.element.style.transform = 
+        this.element.style.transform =
             `translate(${position.x * 40}px, ${position.y * 40}px)`;
         //console.log(`Updated position for player ${this.id} to:`, position);
     }
@@ -300,32 +300,42 @@ export class Player {
         Player.updateHUD();
     }
 
-    render(container) {
+    render() {
         // Remove all previous player cells for this player
         const playerId = typeof this.id === 'object' ? JSON.stringify(this.id) : this.id;
-        const previousCells = document.querySelectorAll(`.player-${playerId}`);
-        previousCells.forEach(cell => {
-            cell.classList.remove(`player-${playerId}`);
-            const playerChar = cell.querySelector('.player-character');
-            if (playerChar) {
-                playerChar.remove();
-            }
-        });
-
-        // Don't render if dead (unless in spectator mode)
-        if (this.isDead) return;
-
-        // Get the exact cell based on rounded position
-        const cell = $(`.cell[data-x="${Math.round(this.position.x)}"][data-y="${Math.round(this.position.y)}"]`);
-        if (cell) {
-            cell.classList.add(`player-${playerId}`);
-            
-            // Add player character if it doesn't exist
-            if (!cell.querySelector('.player-character')) {
-                const playerChar = document.createElement('div');
-                playerChar.className = 'player-character';
-                cell.appendChild(playerChar);
+        const previousCell = document.querySelector(`.player-${playerId}`);
+        const cellPosition = {
+            x: Math.round(this.position.x),
+            y: Math.round(this.position.y)
+        }
+        // remove last position only if outdated
+        if (previousCell) {
+            if (this.isDead || previousCell.dataset.x !== cellPosition.x || previousCell.dataset.y !== cellPosition.y) {
+                previousCell.classList.remove(`player-${playerId}`);
+                const playerChar = previousCell.querySelector('.player-character');
+                if (playerChar) {
+                    playerChar.remove();
+                }
             }
         }
+        // Don't render if dead (unless in spectator mode)
+        if (this.isDead) return;
+        // Get the exact cell based on rounded position. 
+        // Only update position if outdated
+        if (!previousCell || previousCell.dataset.x !== cellPosition.x || previousCell.dataset.y !== cellPosition.y) {
+            const cell = $(`.cell[data-x="${Math.round(this.position.x)}"][data-y="${Math.round(this.position.y)}"]`);
+            if (cell) {
+                cell.classList.add(`player-${playerId}`);
+    
+                // Add player character if it doesn't exist
+                if (!cell.querySelector('.player-character')) {
+                    const playerChar = document.createElement('div');
+                    playerChar.className = 'player-character';
+                    cell.appendChild(playerChar);
+                }
+            }
+        }
+
+
     }
 }

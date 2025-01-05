@@ -424,30 +424,39 @@ export class Game extends Component {
         const root = document.getElementById('root');
         if (!root) return;
 
-        root.innerHTML = '';
+        //root.innerHTML = '';
+        
 
         // Create game container
-        const gameContainer = document.createElement('div');
-        gameContainer.className = 'game-container';
-        root.appendChild(gameContainer);
+        let gameContainer = document.querySelector('.game-container');
+        if (!gameContainer) {
+            root.innerHTML = ''
+            gameContainer = document.createElement('div');
+            gameContainer.className = 'game-container';
+            root.appendChild(gameContainer);
+        }
+        gameContainer.innerHTML = ''
 
         // Only render map and players if the game is running
         if (this.isRunning) {
             // Render map (which includes player HUD)
-            this.map.render(gameContainer);
+            this.map.render();
 
             // Render all players
             this.players.forEach(player => {
                 if (!player.isDead || this.spectatorMode) {
-                    player.render(gameContainer);
+                    player.render();
                 }
             });
         } else {
             // Show waiting screen
-            const waitingScreen = document.createElement('div');
-            waitingScreen.className = 'waiting-screen';
-            waitingScreen.innerHTML = '<h2>Waiting for game to start...</h2>';
-            gameContainer.appendChild(waitingScreen);
+            let waitingScreen = document.querySelector('.waiting-screen');
+            if (!waitingScreen) {
+                waitingScreen = document.createElement('div');
+                waitingScreen.className = 'waiting-screen';
+                waitingScreen.innerHTML = '<h2>Waiting for game to start...</h2>';
+                gameContainer.appendChild(waitingScreen);
+            }
         }
 
         // Render chat
@@ -457,10 +466,13 @@ export class Game extends Component {
 
         // Render spectator mode indicator
         if (this.spectatorMode) {
-            const indicator = document.createElement('div');
-            indicator.className = 'spectator-indicator';
-            indicator.textContent = 'Spectator Mode';
-            root.appendChild(indicator);
+            let indicator = document.querySelector('.spectator-indicator');
+            if (!indicator) {
+                const indicator = document.createElement('div');
+                indicator.className = 'spectator-indicator';
+                indicator.textContent = 'Spectator Mode';
+                root.appendChild(indicator);
+            }
         }
     }
 
