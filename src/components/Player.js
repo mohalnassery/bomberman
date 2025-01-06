@@ -5,13 +5,22 @@ import webSocket from '../core/websocket.js';
 import { PowerUp } from './PowerUp.js';
 
 export class Player {
+    // Static property to track all players
+    static connectedPlayers = new Map();
+
     constructor(props) {
         // Handle both object and individual parameters for backward compatibility
         if (typeof props === 'object') {
             this.id = props.id;
             this.name = props.nickname;
             this.isLocal = props.isLocal || false;
-            this.playerNumber = props.playerNumber || 1; // Default to player 1
+            
+            // Add this player to connected players
+            Player.connectedPlayers.set(this.id, this);
+            
+            // Calculate player number based on connection order
+            this.playerNumber = Player.connectedPlayers.size;
+            console.log(`Player ${this.name} assigned number:`, this.playerNumber);
 
             // Get initial position from the level file based on player number
             let initialPosition = props.initialPosition || props.position || { x: 0, y: 0 };
@@ -65,13 +74,12 @@ export class Player {
 
         // Create character element with player number class
         const character = document.createElement('div');
-        // Convert player ID to a number between 1-4
-        const playerNumber = ((parseInt(this.id.replace(/[^0-9]/g, '')) % 4) + 1);
-        character.className = `player-character player-${playerNumber}`;
+        character.className = `player-character player-${this.playerNumber}`;
+        console.log(`Creating player ${this.name} with number ${this.playerNumber}`);
 
         // Create name tag
         const nameTag = document.createElement('div');
-        nameTag.className = `player-tag`;  // Changed from player-name to player-tag
+        nameTag.className = 'player-tag';
         nameTag.textContent = this.name;
 
         // Assemble elements
@@ -81,7 +89,7 @@ export class Player {
 
         console.log('Created player element:', {
             id: this.id,
-            playerNumber,
+            playerNumber: this.playerNumber,
             element: this.element.outerHTML
         });
     }
@@ -250,50 +258,18 @@ export class Player {
         });
     }
 
-    static connectedPlayers = new Set();
-
-    static addPlayer(player) {
-        Player.connectedPlayers.add(player);
-        Player.updateHUD();
+    destroy() {
+        // Remove from connected players when destroyed
+        Player.connectedPlayers.delete(this.id);
+        this.disableControls();
     }
 
-    static removePlayer(playerId) {
-        for (const player of Player.connectedPlayers) {
-            if (player.id === playerId) {
-                Player.connectedPlayers.delete(player);
-                break;
-            }
-        }
-        Player.updateHUD();
+    static getPlayerCount() {
+        return Player.connectedPlayers.size;
     }
 
-    static updateHUD() {
-        const hudContainer = document.getElementById('player-hud');
-        if (!hudContainer) return;
-
-        hudContainer.innerHTML = '';
-
-        // Sort players by ID to ensure consistent order
-        const players = Array.from(Player.connectedPlayers)
-            .sort((a, b) => a.id.localeCompare(b.id));
-
-        players.forEach(player => {
-            const playerHUD = document.createElement('div');
-            playerHUD.className = 'player-stats';
-            playerHUD.style.borderColor = player.color;
-
-            playerHUD.innerHTML = `
-                <div class="player-name" style="color: ${player.color}">${player.name}</div>
-                <div class="player-info">
-                    <div>Score: ${player.score}</div>
-                    <div>Bombs: ${player.maxBombs}</div>
-                    <div>Range: ${player.bombRange}</div>
-                    <div>Speed: ${player.speed}</div>
-                </div>
-            `;
-
-            hudContainer.appendChild(playerHUD);
-        });
+    static clearPlayers() {
+        Player.connectedPlayers.clear();
     }
 
     updatePosition(position) {
@@ -342,13 +318,10 @@ export class Player {
             if (cell) {
                 cell.classList.add(`player-${playerId}`);
 
-                // Calculate player number (1-4)
-                const playerNumber = ((parseInt(this.id.replace(/[^0-9]/g, '')) % 4) + 1);
-                
-                // Add player character if it doesn't exist
+                // Use the stored player number
                 if (!cell.querySelector('.player-character')) {
                     const playerChar = document.createElement('div');
-                    playerChar.className = `player-character player-${playerNumber}`;
+                    playerChar.className = `player-character player-${this.playerNumber}`;
                     cell.appendChild(playerChar);
                 }
 

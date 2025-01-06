@@ -200,27 +200,12 @@ export class Game extends Component {
         if (data.gameStatus !== "running") {
             this.isRunning = false;
             window.location.hash = '/';
-            return
+            return;
         }
 
-        // Load map for all players if game is running and map not loaded
+        // Clear existing players if this is initial load
         if (!this.map.isLoaded) {
-            console.log('Loading level:', data.selectedLevel);
-            
-            this.map.loadLevel(data.selectedLevel, data.grid)
-            if (this.map.isLoaded) {
-                data.players?.forEach(playerData => {
-                    const player = this.players.get(playerData.id);
-                    if (player && playerData.position) {
-                        player.position = playerData.position;
-                    }
-                });
-                console.log('Map loaded successfully');
-                // Update player positions after map loads
-                this.render(); // Force render after map loads
-            } else {
-
-            }
+            Player.clearPlayers();
         }
 
         // Update all players from game state
@@ -243,6 +228,26 @@ export class Game extends Component {
                 player.updatePosition(playerData.position);
             }
         });
+
+        // Load map for all players if game is running and map not loaded
+        if (!this.map.isLoaded) {
+            console.log('Loading level:', data.selectedLevel);
+            
+            this.map.loadLevel(data.selectedLevel, data.grid)
+            if (this.map.isLoaded) {
+                data.players?.forEach(playerData => {
+                    const player = this.players.get(playerData.id);
+                    if (player && playerData.position) {
+                        player.position = playerData.position;
+                    }
+                });
+                console.log('Map loaded successfully');
+                // Update player positions after map loads
+                this.render(); // Force render after map loads
+            } else {
+
+            }
+        }
 
         // Start game loop if not running
         if (data.gameStatus === 'running' && !this.isRunning) {
