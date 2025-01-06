@@ -31,6 +31,9 @@ export class Game extends Component {
 
         this.setupWebSocket();
         this.start();
+
+        // Initialize chat
+        this.chat = new Chat(this.nickname);
     }
 
     // -- GAMELOOP FUNCTIONS --
@@ -52,7 +55,6 @@ export class Game extends Component {
             let selectedLevel = gameState.selectedLevel;
 
             if (!selectedLevel && gameState.levelVotes) {
-                // If no selected level, use the voted level
                 selectedLevel = gameState.levelVotes[playerInfo.nickname];
             }
 
@@ -73,8 +75,8 @@ export class Game extends Component {
 
         } catch (error) {
             console.error('Failed to start game:', error);
-            const root = document.getElementById('root');
-            if (root) {
+                const root = document.getElementById('root');
+                if (root) {
                 root.innerHTML = '<div class="error">Failed to start game. <a href="#/">Return to Lobby</a></div>';
             } else {
                 window.location.hash = '/';
@@ -245,7 +247,7 @@ export class Game extends Component {
         // Start game loop if not running
         if (data.gameStatus === 'running' && !this.isRunning) {
             this.isRunning = true;
-            this.gameLoop();
+           this.gameLoop();
         }
     }
 
@@ -422,62 +424,91 @@ export class Game extends Component {
     render() {
         // Clear the game container
         const root = document.getElementById('root');
-        if (!root) return;
+        root.innerHTML = '';
 
-        //root.innerHTML = '';
+        // Create main game container
+        const gameContainer = document.createElement('div');
+        gameContainer.className = 'game-container';
+
+        // Create left panel (stats)
+        const leftPanel = document.createElement('div');
+        leftPanel.className = 'game-panel left-panel';
+        leftPanel.innerHTML = `
+            <div class="player-stats">
+                <h3>Player Stats</h3>
+                <div class="stats-item">
+                    <span class="stats-label">Lives:</span>
+                    <span class="stats-value lives">${this.lives || 3}</span>
+                </div>
+                <div class="stats-item">
+                    <span class="stats-label">Power-Ups:</span>
+                    <div class="power-ups-list">
+                        <div class="power-up-item">
+                            <span class="power-up-icon bomb">🎆</span>
+                            <span class="power-up-count">${this.bombCount || 0}</span>
+                        </div>
+                        <div class="power-up-item">
+                            <span class="power-up-icon flame">🔥</span>
+                            <span class="power-up-count">${this.flameCount || 0}</span>
+                        </div>
+                        <div class="power-up-item">
+                            <span class="power-up-icon speed">⚡</span>
+                            <span class="power-up-count">${this.speedCount || 0}</span>
+                        </div>
+                    </div>
+                </div>
+                <button id="leaveGameBtn" class="leave-game-btn">Leave Game</button>
+            </div>
+        `;
+
+        // Create center panel (game map)
+        const centerPanel = document.createElement('div');
+        centerPanel.className = 'game-panel center-panel';
         
+        // Create map container inside center panel
+        const mapContainer = document.createElement('div');
+        mapContainer.className = 'map-container';
+        centerPanel.appendChild(mapContainer);
 
-        // Create game container
-        let gameContainer = document.querySelector('.game-container');
-        if (!gameContainer) {
-            root.innerHTML = ''
-            gameContainer = document.createElement('div');
-            gameContainer.className = 'game-container';
-            root.appendChild(gameContainer);
-        }
-        gameContainer.innerHTML = ''
+        // Create right panel (chat)
+        const rightPanel = document.createElement('div');
+        rightPanel.className = 'game-panel right-panel';
+        
+        // Add panels to game container
+        gameContainer.appendChild(leftPanel);
+        gameContainer.appendChild(centerPanel);
+        gameContainer.appendChild(rightPanel);
+        root.appendChild(gameContainer);
 
-        // Only render map and players if the game is running
+        // Initialize map
         if (this.isRunning) {
-            // Render map (which includes player HUD)
-            this.map.render();
-
-            // Render all players
+            this.map.render(mapContainer);
             this.players.forEach(player => {
                 if (!player.isDead || this.spectatorMode) {
-                    player.render();
+                    player.render(mapContainer);
                 }
             });
-        } else {
-            // Show waiting screen
-            let waitingScreen = document.querySelector('.waiting-screen');
-            if (!waitingScreen) {
-                waitingScreen = document.createElement('div');
-                waitingScreen.className = 'waiting-screen';
-                waitingScreen.innerHTML = '<h2>Waiting for game to start...</h2>';
-                gameContainer.appendChild(waitingScreen);
-            }
         }
 
-        // Render chat
-        if (this.chat) {
-            this.chat.render();
+        // Initialize chat in right panel
+        if (!this.chat) {
+            this.chat = new Chat(this.nickname);
         }
+        this.chat.initialize(rightPanel);
 
-        // Render spectator mode indicator
-        if (this.spectatorMode) {
-            let indicator = document.querySelector('.spectator-indicator');
-            if (!indicator) {
-                const indicator = document.createElement('div');
-                indicator.className = 'spectator-indicator';
-                indicator.textContent = 'Spectator Mode';
-                root.appendChild(indicator);
+        // Add event listener for leave game button
+        document.getElementById('leaveGameBtn').addEventListener('click', () => {
+            if (confirm('Are you sure you want to leave the game?')) {
+                window.location.href = '/';
             }
-        }
+        });
     }
 
     destroy() {
         this.isRunning = false;
+        if (this.chat) {
+            this.chat.destroy();
+        }
         webSocket.disconnect();
         super.destroy();
     }

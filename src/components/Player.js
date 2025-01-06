@@ -65,17 +65,25 @@ export class Player {
 
         // Create character element with player number class
         const character = document.createElement('div');
-        character.className = `player-character player-${this.playerNumber}`;
+        // Convert player ID to a number between 1-4
+        const playerNumber = ((parseInt(this.id.replace(/[^0-9]/g, '')) % 4) + 1);
+        character.className = `player-character player-${playerNumber}`;
 
-        // Create name tag with player number
+        // Create name tag
         const nameTag = document.createElement('div');
-        nameTag.className = 'player-name';
-        nameTag.textContent = `${this.name} (P${this.playerNumber})`;
+        nameTag.className = `player-tag`;  // Changed from player-name to player-tag
+        nameTag.textContent = this.name;
 
         // Assemble elements
         cell.appendChild(character);
         cell.appendChild(nameTag);
         this.element = cell;
+
+        console.log('Created player element:', {
+            id: this.id,
+            playerNumber,
+            element: this.element.outerHTML
+        });
     }
 
     initControls() {
@@ -308,6 +316,7 @@ export class Player {
             x: Math.round(this.position.x),
             y: Math.round(this.position.y)
         }
+
         // remove last position only if outdated
         if (previousCell) {
             if (this.isDead || previousCell.dataset.x !== cellPosition.x || previousCell.dataset.y !== cellPosition.y) {
@@ -316,26 +325,41 @@ export class Player {
                 if (playerChar) {
                     playerChar.remove();
                 }
-            }
-        }
-        // Don't render if dead (unless in spectator mode)
-        if (this.isDead) return;
-        // Get the exact cell based on rounded position. 
-        // Only update position if outdated
-        if (!previousCell || previousCell.dataset.x !== cellPosition.x || previousCell.dataset.y !== cellPosition.y) {
-            const cell = $(`.cell[data-x="${Math.round(this.position.x)}"][data-y="${Math.round(this.position.y)}"]`);
-            if (cell) {
-                cell.classList.add(`player-${playerId}`);
-    
-                // Add player character if it doesn't exist
-                if (!cell.querySelector('.player-character')) {
-                    const playerChar = document.createElement('div');
-                    playerChar.className = 'player-character';
-                    cell.appendChild(playerChar);
+                const playerTag = previousCell.querySelector('.player-tag');
+                if (playerTag) {
+                    playerTag.remove();
                 }
             }
         }
 
+        // Don't render if dead (unless in spectator mode)
+        if (this.isDead) return;
 
+        // Get the exact cell based on rounded position. 
+        // Only update position if outdated
+        if (!previousCell || previousCell.dataset.x !== cellPosition.x || previousCell.dataset.y !== cellPosition.y) {
+            const cell = $(`.cell[data-x="${cellPosition.x}"][data-y="${cellPosition.y}"]`);
+            if (cell) {
+                cell.classList.add(`player-${playerId}`);
+
+                // Calculate player number (1-4)
+                const playerNumber = ((parseInt(this.id.replace(/[^0-9]/g, '')) % 4) + 1);
+                
+                // Add player character if it doesn't exist
+                if (!cell.querySelector('.player-character')) {
+                    const playerChar = document.createElement('div');
+                    playerChar.className = `player-character player-${playerNumber}`;
+                    cell.appendChild(playerChar);
+                }
+
+                // Add player tag if it doesn't exist
+                if (!cell.querySelector('.player-tag')) {
+                    const playerTag = document.createElement('div');
+                    playerTag.className = 'player-tag';
+                    playerTag.textContent = this.name;
+                    cell.appendChild(playerTag);
+                }
+            }
+        }
     }
 }

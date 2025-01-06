@@ -26,7 +26,8 @@ export class Chat {
         };
     }
 
-    initialize() {
+    initialize(container) {
+        this.container = container;
         this.setupUI();
         this.setupWebSocket();
         this.setupDragAndDrop();
@@ -43,8 +44,7 @@ export class Chat {
     }
 
     setupUI() {
-        const root = $('#root');
-        const chatHtml = `
+        this.container.innerHTML = `
             <div class="chat" id="chat-window">
                 <div class="chat-header">
                     <span class="chat-title">Chat</span>
@@ -54,7 +54,8 @@ export class Chat {
                     </div>
                 </div>
                 <div class="chat-body">
-                    <div id="chat-messages"></div>
+                    <div id="chat-messages">
+                    </div>
                     <div class="chat-input-container">
                         <input type="text" id="chat-input" placeholder="Type a message..." maxlength="200" />
                         <button id="send-btn">Send</button>
@@ -62,7 +63,6 @@ export class Chat {
                 </div>
             </div>
         `;
-        root.insertAdjacentHTML('beforeend', chatHtml);
 
         // Event listeners
         $('#chat-input').addEventListener('keypress', (e) => {

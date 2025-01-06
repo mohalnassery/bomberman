@@ -33,6 +33,10 @@ class GameServer {
         this.tickInterval = null;
         this.mapWidth = 15;
         this.mapHeight = 13;  // Match the level file dimensions
+        this.waitingTimer = null;
+        this.startTimer = null;
+        this.waitingInterval = null;
+        this.startInterval = null;
         this.setupServer();
     }
 
@@ -469,22 +473,42 @@ class GameServer {
             votedLevel: null
         };
 
-        if (this.gameState.players.length >= 4) {
+        if (this.gameState.players.size >= 4) {
             ws.send(JSON.stringify({
                 type: 'playerDenied',
                 payload: {message: "Room Full"}
-            }))
-            return
+            }));
+            return;
         }
         
+        // Add new player to game state
         this.gameState.players.set(sessionId, player);
         
+        // Create a synchronized state for the new player
+        const syncState = {
+            players: Array.from(this.gameState.players.values()),
+            readyPlayers: Array.from(this.gameState.readyPlayers),
+            levelVotes: Object.fromEntries(this.gameState.levelVotes),
+            selectedLevel: this.gameState.selectedLevel,
+            playerCount: this.gameState.players.size,
+            waitingTimer: this.waitingTimer,
+            startTimer: this.startTimer
+        };
+
+        // Send synchronized state to the new player
+        ws.send(JSON.stringify({
+            type: 'syncPlayers',
+            payload: syncState
+        }));
         
-        // Broadcast to all clients including new player
+        // Then broadcast to all clients including new player
         this.broadcast('playerJoined', {
-                player,
-                playerCount: this.gameState.players.size
-            });
+            player,
+            playerCount: this.gameState.players.size
+        });
+
+        // Update timers based on player count
+        this.updateTimers();
     }
 
     // CHECK PLAYER ID
@@ -492,11 +516,46 @@ class GameServer {
         const playerId = ws.playerId;
         if (!playerId) return;
 
-        this.gameState.readyPlayers.add(playerId);
+        const player = this.gameState.players.get(playerId);
+        if (!player) return;
 
-        this.checkGameStart();
-        
-        this.broadcastGameState();
+        // Toggle ready state
+        if (this.gameState.readyPlayers.has(playerId)) {
+            this.gameState.readyPlayers.delete(playerId);
+            player.ready = false;
+        } else {
+            this.gameState.readyPlayers.add(playerId);
+            player.ready = true;
+        }
+
+        const readyCount = this.gameState.readyPlayers.size;
+        console.log('Ready players count:', readyCount); // Debug log
+
+        // First broadcast the ready state
+        this.broadcast('playerReady', {
+            playerId,
+            ready: player.ready,
+            readyCount
+        });
+
+        // Then handle timer logic based on ready count
+        if (readyCount >= 2) {
+            if (readyCount === 4) {
+                // Skip waiting timer and go straight to game countdown
+                this.startGameCountdown();
+            } else {
+                // Start or continue waiting timer for 2-3 players
+                this.startWaitingPhase();
+            }
+        } else {
+            // Clear timers if less than 2 players ready
+            this.clearTimers();
+            this.broadcast('timerUpdate', {
+                waitingTimer: null,
+                startTimer: null,
+                readyCount
+            });
+        }
     }
 
     handlePlayerUnready(ws, data) {
@@ -715,25 +774,144 @@ class GameServer {
     }
 
     startGameCountdown() {
-        if (this.gameState.gameStatus !== 'waiting') return;
+        const readyCount = this.gameState.readyPlayers.size;
         
-        this.gameState.gameStatus = 'countdown';
-        let countdown = 3;
-        this.broadcast('gameStarting',{ countdown });
-        
-        const timer = setInterval(() => {
-            console.log(countdown)
-            if (!this.checkAllReady()) {
-                clearInterval(timer);
-                this.gameState.gameStatus = 'waiting';
-            }
-            if (countdown <= 0) {
-                clearInterval(timer);
+        // Clear waiting timer if it exists
+        if (this.waitingInterval) {
+            clearInterval(this.waitingInterval);
+            this.waitingInterval = null;
+        }
+
+        this.waitingTimer = null;
+        this.startTimer = 10;
+
+        // Broadcast initial countdown state
+        this.broadcast('timerUpdate', {
+            waitingTimer: null,
+            startTimer: this.startTimer,
+            readyCount
+        });
+
+        this.startInterval = setInterval(() => {
+            this.startTimer--;
+            
+            // Broadcast countdown update
+            this.broadcast('timerUpdate', {
+                waitingTimer: null,
+                startTimer: this.startTimer,
+                readyCount
+            });
+
+            if (this.startTimer <= 0) {
+                clearInterval(this.startInterval);
                 this.startGame();
-            } else {
-                countdown--;
             }
         }, 1000);
+    }
+
+    clearTimers() {
+        if (this.waitingInterval) {
+            clearInterval(this.waitingInterval);
+            this.waitingInterval = null;
+        }
+        if (this.startInterval) {
+            clearInterval(this.startInterval);
+            this.startInterval = null;
+        }
+        this.waitingTimer = null;
+        this.startTimer = null;
+    }
+
+    startWaitingPhase() {
+        const readyCount = this.gameState.readyPlayers.size;
+
+        // Clear any existing timers
+        this.clearTimers();
+
+        // If 4 players are ready, skip waiting phase
+        if (readyCount === 4) {
+            this.startGameCountdown();
+            return;
+        }
+
+        // Start 20s waiting timer for 2-3 players
+        this.waitingTimer = 20;
+        
+        // Broadcast initial timer state
+        this.broadcast('timerUpdate', {
+            waitingTimer: this.waitingTimer,
+            startTimer: null,
+            readyCount
+        });
+
+        this.waitingInterval = setInterval(() => {
+            this.waitingTimer--;
+            
+            // Broadcast current timer state
+            this.broadcast('timerUpdate', {
+                waitingTimer: this.waitingTimer,
+                startTimer: null,
+                readyCount
+            });
+
+            if (this.waitingTimer <= 0) {
+                clearInterval(this.waitingInterval);
+                this.startGameCountdown();
+            }
+        }, 1000);
+    }
+
+    updateTimers() {
+        const readyPlayerCount = this.gameState.readyPlayers.size;
+        console.log('Ready players:', readyPlayerCount); // Debug log
+
+        // Clear any existing timers
+        if (this.waitingInterval) clearInterval(this.waitingInterval);
+        if (this.startInterval) clearInterval(this.startInterval);
+        
+        // Reset timers
+        this.waitingTimer = null;
+        this.startTimer = null;
+
+        // Handle different ready player counts
+        if (readyPlayerCount >= 2 && readyPlayerCount < 4) {
+            // Start 20s waiting timer
+            this.waitingTimer = 20;
+            console.log('Starting waiting timer:', this.waitingTimer); // Debug log
+
+            // Broadcast initial state
+            this.broadcast('timerUpdate', {
+                waitingTimer: this.waitingTimer,
+                startTimer: null,
+                readyPlayerCount
+            });
+
+            this.waitingInterval = setInterval(() => {
+                this.waitingTimer--;
+                console.log('Waiting timer:', this.waitingTimer); // Debug log
+                
+                if (this.waitingTimer <= 0) {
+                    clearInterval(this.waitingInterval);
+                    this.startGameCountdown();
+                } else {
+                    this.broadcast('timerUpdate', {
+                        waitingTimer: this.waitingTimer,
+                        startTimer: null,
+                        readyPlayerCount
+                    });
+                }
+            }, 1000);
+        } else if (readyPlayerCount === 4) {
+            // Skip waiting timer and start game countdown immediately
+            this.startGameCountdown();
+        } else {
+            // Less than 2 ready players
+            this.broadcast('timerUpdate', {
+                waitingTimer: null,
+                startTimer: null,
+                readyPlayerCount
+            });
+        }
     }
 }
 

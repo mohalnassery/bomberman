@@ -9,7 +9,6 @@ export class Lobby extends Component {
             players: [], 
             playerCount: 0,
             gameStarting: false,
-            countdown: null,
             readyPlayers: new Set(),
             levelVotes: {},
             selectedLevel: null,
@@ -17,8 +16,9 @@ export class Lobby extends Component {
                 maxPlayers: 4,
                 startLevel: 1,
                 lives: 3,
-                timeLimit: 180
-            }
+            },
+            waitingTimer: null,  // 20s timer when 2-3 players
+            startTimer: null,    // 10s timer before game starts
         });
         
         this.isJoined = false;
@@ -53,6 +53,9 @@ export class Lobby extends Component {
         
         // Initialize websocket handlers
         this.setupWebSocket();
+
+        // Add reference to track if initial render is done
+        this.initialRenderDone = false;
     }
 
     setupWebSocket() {
@@ -82,6 +85,32 @@ export class Lobby extends Component {
         });
 
         webSocket.on('chat', this.handleChatMessage.bind(this));
+
+        // Add timer handlers
+        webSocket.on('timerUpdate', (data) => {
+            const { waitingTimer, startTimer, readyPlayerCount } = data;
+            
+            // Update store
+            this.store.setState({
+                ...this.store.getState(),
+                waitingTimer,
+                startTimer,
+                readyPlayers: new Set(Array(readyPlayerCount).fill(true))
+            });
+            
+            // Update only the timer display if initial render is done
+            if (this.initialRenderDone) {
+                this.updateTimerDisplay();
+            } else {
+                this.render();
+            }
+        });
+
+        // Game starting handler
+        webSocket.on('gameStarting', () => {
+            this.store.setState({ gameStarting: true });
+            this.render();
+        });
     }
 
     // -- WS HANDLERS: client to server --
@@ -243,22 +272,35 @@ export class Lobby extends Component {
     }
 
     handlePlayerReady(data) {
-        const { nickname } = data;
         const state = this.store.getState();
+        const { playerId, ready, readyCount } = data;
         
-        const updatedPlayers = state.players.map(player => {
-            if (player.nickname === nickname) {
-                return { ...player, ready: true };
+        // Create a new Set from the existing one
+        const readyPlayers = new Set(state.readyPlayers);
+        
+        // Update ready players set
+        if (ready) {
+            readyPlayers.add(playerId);
+        } else {
+            readyPlayers.delete(playerId);
+        }
+
+        // Update player ready status
+        const players = state.players.map(player => {
+            if (player.id === playerId) {
+                return { ...player, ready };
             }
             return player;
         });
 
+        // Update store with new state
         this.store.setState({
             ...state,
-            players: updatedPlayers
+            players,
+            readyPlayers,
+            readyCount // Store the server's ready count
         });
 
-        // Update UI
         this.render();
     }
 
@@ -361,17 +403,20 @@ export class Lobby extends Component {
     }
 
     handleSyncPlayers(data) {
-        const { players, readyPlayers, levelVotes } = data;
-        
+        // Update the store with synchronized state
         this.store.setState({
-            players: players,
-            playerCount: players.length,
-            readyPlayers: new Set(readyPlayers),
-            levelVotes: levelVotes
+            ...this.store.getState(),
+            players: data.players,
+            readyPlayers: new Set(data.readyPlayers),
+            levelVotes: data.levelVotes || {},
+            selectedLevel: data.selectedLevel,
+            playerCount: data.playerCount,
+            waitingTimer: data.waitingTimer,
+            startTimer: data.startTimer
         });
-        
-        this.updatePlayerList();
-        this.updateLevelVotes();
+
+        // Force render to update the view
+        this.render();
     }
 
     handleGameStarting(data) {
@@ -605,12 +650,11 @@ export class Lobby extends Component {
         // Show game controls if joined
         else {
             html += `
-                <div class="lobby-controls">
-                    <button id="readyBtn" class="${isReady ? 'ready' : ''}" 
+            <div class="lobby-controls-container">
+                <button id="readyBtn" class="${isReady ? 'ready' : ''}" 
                             ${!state.levelVotes[this.nickname] ? 'disabled' : ''}>
                         ${isReady ? 'Not Ready' : 'Ready'}
-                    </button>
-                </div>
+                </button>
                 <div class="level-selection">
                     <h2>Select Level:</h2>
                     <p class="level-note">You must vote for a level before marking yourself as ready</p>
@@ -641,39 +685,69 @@ export class Lobby extends Component {
                         </div>
                     `).join('')}
                 </div>
-                <div class="player-count">
-                    Players: ${state.players.length} / ${state.gameSettings.maxPlayers}
-                </div>
-            </div>
-            </div>`;
-            
-            // Chat section
-            html += `
-                <div class="chat-section">
-                    <div class="chat">
-                        <div class="chat-header">
-                            <span class="chat-title">Chat</span>
-                            <div class="chat-controls">
-                                <button class="minimize-btn">_</button>
-                            </div>
-                        </div>
-                        <div class="chat-body">
-                            <div id="chat-messages"></div>
-                            <div class="chat-input-container">
-                                <input type="text" id="chat-input" placeholder="Type a message...">
-                                <button id="send-btn">Send</button>
-                            </div>
-                        </div>
+                <div class="stats-container">
+                    <div class="player-count">
+                        Ready Players: ${state.readyPlayers.size} / ${state.gameSettings.maxPlayers}
                     </div>
-                </div>`;
+                    <div class="time-count ${(state.startTimer !== null && state.startTimer <= 5) ? 'urgent' : ''}">
+                        ${this.getTimerDisplay()}
+                    </div>
+                </div>
+            </div>`;
+                
         }
 
-        html += `</div>`;
+        html += `</div></div></div>`;
         
         const root = document.getElementById('root');
         if (root) {
             root.innerHTML = html;
             this.attachEventListeners();
+            this.initialRenderDone = true; // Mark initial render as complete
+        }
+    }
+
+    getTimerDisplay() {
+        const state = this.store.getState();
+        const readyCount = state.readyCount || 0; // Use server's ready count
+        
+        let timerDisplay = '';
+        
+        if (readyCount < 2) {
+            timerDisplay = 'Waiting for players...';
+        } else if (readyCount >= 2 && readyCount < 4) {
+            if (state.waitingTimer !== null) {
+                timerDisplay = `Players joining: ${state.waitingTimer}s`;
+            } else if (state.startTimer !== null) {
+                timerDisplay = `Game starting in: ${state.startTimer}s`;
+            }
+        } else if (readyCount === 4) {
+            if (state.startTimer !== null) {
+                timerDisplay = `Game starting in: ${state.startTimer}s`;
+            } else {
+                timerDisplay = 'Starting game...';
+            }
+        }
+
+        console.log('Timer Display:', {
+            readyCount,
+            waitingTimer: state.waitingTimer,
+            startTimer: state.startTimer,
+            display: timerDisplay
+        });
+
+        return timerDisplay;
+    }
+
+    updateTimerDisplay() {
+        const timeCountElement = document.querySelector('.time-count');
+        if (timeCountElement) {
+            const timerDisplay = this.getTimerDisplay();
+            const state = this.store.getState();
+            
+            // Update classes and content
+            timeCountElement.className = `time-count ${(state.startTimer !== null && state.startTimer <= 5) ? 'urgent' : ''}`;
+            timeCountElement.textContent = timerDisplay;
         }
     }
 
