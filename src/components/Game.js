@@ -15,11 +15,12 @@ export class Game extends Component {
         this.isGameOver = false;
         this.winner = null;
         this.localPlayerId = props?.playerInfo?.playerId || null;
-        this.nickname = props?.playerInfo?.nickname || null;
+        this.nickname = props?.playerInfo?.nickname || 'Player';
         this.spectatorMode = false;
         this.lastFrameTime = 0;
         this.stateBuffer = [];
         this.interpolationDelay = 100;
+        this.hasInitializedPanels = false;
 
         // Bind event handlers
         this.handleGameState = this.handleGameState.bind(this);
@@ -193,6 +194,13 @@ export class Game extends Component {
         webSocket.on('gameOver', this.handleGameOver);
         webSocket.on('bombPlaced',this.handleBombPlaced);
         webSocket.on('bombExplosion',this.handleBombExplosion);
+
+        // Add chat message handler
+        webSocket.on('chatMessage', (data) => {
+            if (this.chat) {
+                this.chat.receiveMessage(data);
+            }
+        });
     }
 
     handleGameState(data) {
@@ -427,86 +435,87 @@ export class Game extends Component {
     }
 
     render() {
-        // Clear the game container
         const root = document.getElementById('root');
-        root.innerHTML = '';
+        if (!root) return;
 
-        // Create main game container
-        const gameContainer = document.createElement('div');
-        gameContainer.className = 'game-container';
+        // Only create the panel structure once
+        if (!this.hasInitializedPanels) {
+            root.innerHTML = '';
+            const gameContainer = document.createElement('div');
+            gameContainer.className = 'game-container';
 
-        // Create left panel (stats)
-        const leftPanel = document.createElement('div');
-        leftPanel.className = 'game-panel left-panel';
-        leftPanel.innerHTML = `
-            <div class="player-stats">
-                <h3>Player Stats</h3>
-                <div class="stats-item">
-                    <span class="stats-label">Lives:</span>
-                    <span class="stats-value lives">${this.lives || 3}</span>
-                </div>
-                <div class="stats-item">
-                    <span class="stats-label">Power-Ups:</span>
-                    <div class="power-ups-list">
-                        <div class="power-up-item">
-                            <span class="power-up-icon bomb">🎆</span>
-                            <span class="power-up-count">${this.bombCount || 0}</span>
-                        </div>
-                        <div class="power-up-item">
-                            <span class="power-up-icon flame">🔥</span>
-                            <span class="power-up-count">${this.flameCount || 0}</span>
-                        </div>
-                        <div class="power-up-item">
-                            <span class="power-up-icon speed">⚡</span>
-                            <span class="power-up-count">${this.speedCount || 0}</span>
+            // Create left panel (stats)
+            const leftPanel = document.createElement('div');
+            leftPanel.className = 'game-panel left-panel';
+            leftPanel.innerHTML = `
+                <div class="player-stats">
+                    <h3>Player Stats</h3>
+                    <div class="stats-item">
+                        <span class="stats-label">Lives:</span>
+                        <span class="stats-value lives">${this.lives || 3}</span>
+                    </div>
+                    <div class="stats-item">
+                        <span class="stats-label">Power-Ups:</span>
+                        <div class="power-ups-list">
+                            <div class="power-up-item">
+                                <span class="power-up-icon bomb">🎆</span>
+                                <span class="power-up-count">${this.bombCount || 0}</span>
+                            </div>
+                            <div class="power-up-item">
+                                <span class="power-up-icon flame">🔥</span>
+                                <span class="power-up-count">${this.flameCount || 0}</span>
+                            </div>
+                            <div class="power-up-item">
+                                <span class="power-up-icon speed">⚡</span>
+                                <span class="power-up-count">${this.speedCount || 0}</span>
+                            </div>
                         </div>
                     </div>
+                    <button id="leaveGameBtn" class="leave-game-btn">Leave Game</button>
                 </div>
-                <button id="leaveGameBtn" class="leave-game-btn">Leave Game</button>
-            </div>
-        `;
+            `;
 
-        // Create center panel (game map)
-        const centerPanel = document.createElement('div');
-        centerPanel.className = 'game-panel center-panel';
-        
-        // Create map container inside center panel
-        const mapContainer = document.createElement('div');
-        mapContainer.className = 'map-container';
-        centerPanel.appendChild(mapContainer);
+            // Create center panel (game map)
+            const centerPanel = document.createElement('div');
+            centerPanel.className = 'game-panel center-panel';
+            centerPanel.innerHTML = '<div class="map-container"></div>';
 
-        // Create right panel (chat)
-        const rightPanel = document.createElement('div');
-        rightPanel.className = 'game-panel right-panel';
-        
-        // Add panels to game container
-        gameContainer.appendChild(leftPanel);
-        gameContainer.appendChild(centerPanel);
-        gameContainer.appendChild(rightPanel);
-        root.appendChild(gameContainer);
+            // Create right panel (chat)
+            const rightPanel = document.createElement('div');
+            rightPanel.className = 'game-panel right-panel';
 
-        // Initialize map
-        if (this.isRunning) {
-            this.map.render(mapContainer);
+            // Add panels to game container
+            gameContainer.appendChild(leftPanel);
+            gameContainer.appendChild(centerPanel);
+            gameContainer.appendChild(rightPanel);
+            root.appendChild(gameContainer);
+
+            // Initialize chat in right panel
+            if (!this.chat) {
+                this.chat = new Chat(this.nickname);
+            }
+            this.chat.initialize(rightPanel);
+
+            // Add event listener for leave game button
+            document.getElementById('leaveGameBtn').addEventListener('click', () => {
+                if (confirm('Are you sure you want to leave the game?')) {
+                    window.location.href = '/';
+                }
+            });
+
+            this.hasInitializedPanels = true;
+        }
+
+        // Only update the game map
+        const mapContainer = document.querySelector('.map-container');
+        if (mapContainer && this.isRunning) {
+            this.map.render();
             this.players.forEach(player => {
                 if (!player.isDead || this.spectatorMode) {
-                    player.render(mapContainer);
+                    player.render();
                 }
             });
         }
-
-        // Initialize chat in right panel
-        if (!this.chat) {
-            this.chat = new Chat(this.nickname);
-        }
-        this.chat.initialize(rightPanel);
-
-        // Add event listener for leave game button
-        document.getElementById('leaveGameBtn').addEventListener('click', () => {
-            if (confirm('Are you sure you want to leave the game?')) {
-                window.location.href = '/';
-            }
-        });
     }
 
     destroy() {

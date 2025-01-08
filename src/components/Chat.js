@@ -19,163 +19,118 @@ export class Chat {
         this.playerName = playerName;
         this.messages = [];
         this.isMinimized = false;
-        this.dragState = {
-            isDragging: false,
-            startX: 0,
-            startY: 0
-        };
+        this.container = null;
     }
 
     initialize(container) {
         this.container = container;
         this.setupUI();
-        this.setupWebSocket();
-        this.setupDragAndDrop();
-    }
-
-    setupWebSocket() {
-        webSocket.on('chatMessage', this.receiveMessage.bind(this));
-        webSocket.on('playerJoined', (data) => {
-            this.systemMessage(`${data.playerName} joined the game`);
-        });
-        webSocket.on('playerLeft', (data) => {
-            this.systemMessage(`${data.playerName} left the game`);
-        });
+        this.setupEventListeners();
     }
 
     setupUI() {
+        if (!this.container) return;
         this.container.innerHTML = `
-            <div class="chat" id="chat-window">
+            <div class="chat">
                 <div class="chat-header">
-                    <span class="chat-title">Chat</span>
+                    <span class="chat-title">Game Chat</span>
                     <div class="chat-controls">
                         <button class="minimize-btn">_</button>
-                        <button class="close-btn">×</button>
                     </div>
                 </div>
                 <div class="chat-body">
-                    <div id="chat-messages">
-                    </div>
+                    <div id="chat-messages"></div>
                     <div class="chat-input-container">
-                        <input type="text" id="chat-input" placeholder="Type a message..." maxlength="200" />
+                        <input type="text" id="chat-input" placeholder="Type a message..." maxlength="200">
                         <button id="send-btn">Send</button>
                     </div>
                 </div>
             </div>
         `;
-
-        // Event listeners
-        $('#chat-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                this.sendMessage(e.target.value);
-                e.target.value = '';
-            }
-        });
-
-        $('#send-btn').addEventListener('click', () => {
-            const input = $('#chat-input');
-            this.sendMessage(input.value);
-            input.value = '';
-        });
-
-        $('.minimize-btn').addEventListener('click', () => this.toggleMinimize());
-        $('.close-btn').addEventListener('click', () => this.toggleMinimize(true));
     }
 
-    setupDragAndDrop() {
-        const chatWindow = $('#chat-window');
-        const header = $('.chat-header');
+    setupEventListeners() {
+        if (!this.container) return;
+        const input = this.container.querySelector('#chat-input');
+        const sendBtn = this.container.querySelector('#send-btn');
+        const minimizeBtn = this.container.querySelector('.minimize-btn');
 
-        header.addEventListener('mousedown', (e) => {
-            if (e.target.tagName === 'BUTTON') return;
-            
-            this.dragState = {
-                isDragging: true,
-                startX: e.clientX - chatWindow.offsetLeft,
-                startY: e.clientY - chatWindow.offsetTop
-            };
-        });
+        if (input && sendBtn && minimizeBtn) {
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (e.target.value.trim()) {
+                        this.sendMessage(e.target.value);
+                        e.target.value = '';
+                    }
+                }
+            });
 
-        document.addEventListener('mousemove', (e) => {
-            if (!this.dragState.isDragging) return;
+            sendBtn.addEventListener('click', () => {
+                if (input.value.trim()) {
+                    this.sendMessage(input.value);
+                    input.value = '';
+                }
+            });
 
-            const newX = e.clientX - this.dragState.startX;
-            const newY = e.clientY - this.dragState.startY;
-
-            // Keep window within viewport bounds
-            const maxX = window.innerWidth - chatWindow.offsetWidth;
-            const maxY = window.innerHeight - chatWindow.offsetHeight;
-            
-            chatWindow.style.left = Math.max(0, Math.min(newX, maxX)) + 'px';
-            chatWindow.style.top = Math.max(0, Math.min(newY, maxY)) + 'px';
-        });
-
-        document.addEventListener('mouseup', () => {
-            this.dragState.isDragging = false;
-        });
-    }
-
-    toggleMinimize(forceClose = false) {
-        const chatWindow = $('#chat-window');
-        this.isMinimized = forceClose || !this.isMinimized;
-        chatWindow.classList.toggle('minimized', this.isMinimized);
+            minimizeBtn.addEventListener('click', () => this.toggleMinimize());
+        }
     }
 
     sendMessage(message) {
-        message = message.trim();
-        if (message === '') return;
+        if (!message.trim()) return;
 
-        // Sanitize input using our custom purify function
-        message = purifyText(message);
-        
-        webSocket.send('chatMessage', {
-            message,
+        const messageData = {
+            message: this.sanitizeMessage(message),
             playerName: this.playerName,
             timestamp: new Date().toISOString()
-        });
-    }
+        };
 
-    systemMessage(message) {
-        this.messages.push({
-            type: 'system',
-            message,
-            timestamp: new Date().toISOString()
-        });
-        this.render();
+        // The message will be added when received back from server
+        webSocket.send('chatMessage', messageData);
     }
 
     receiveMessage(data) {
-        this.messages.push({
-            type: 'chat',
-            playerName: data.playerName,
-            message: data.message,
-            timestamp: data.timestamp
-        });
-        this.render();
+        // Add all received messages to chat
+        this.addMessageToChat(data);
     }
 
-    formatTimestamp(timestamp) {
+    addMessageToChat(messageData) {
+        const messagesContainer = document.querySelector('#chat-messages');
+        if (!messagesContainer) {
+            console.error('Chat messages container not found');
+            return;
+        }
+
+        const messageElement = document.createElement('div');
+        messageElement.className = `chat-message ${messageData.playerName === this.playerName ? 'own' : ''}`;
+        messageElement.innerHTML = `
+            <span class="timestamp">${this.formatTime(messageData.timestamp)}</span>
+            <span class="player-name">${messageData.playerName}:</span>
+            <span class="message">${messageData.message}</span>
+        `;
+
+        messagesContainer.appendChild(messageElement);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    sanitizeMessage(message) {
+        return message
+            .trim()
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    formatTime(timestamp) {
         const date = new Date(timestamp);
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
-    render() {
-        const chatMessages = $('#chat-messages');
-        chatMessages.innerHTML = this.messages.map(msg => {
-            if (msg.type === 'system') {
-                return `<div class="chat-message system">
-                    <span class="timestamp">${this.formatTimestamp(msg.timestamp)}</span>
-                    <span class="message">${msg.message}</span>
-                </div>`;
-            }
-            return `<div class="chat-message ${msg.playerName === this.playerName ? 'own' : ''}">
-                <span class="timestamp">${this.formatTimestamp(msg.timestamp)}</span>
-                <span class="player-name">${msg.playerName}:</span>
-                <span class="message">${msg.message}</span>
-            </div>`;
-        }).join('');
-        
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+    toggleMinimize() {
+        const chatBody = this.container.querySelector('.chat-body');
+        if (chatBody) {
+            this.isMinimized = !this.isMinimized;
+            chatBody.style.display = this.isMinimized ? 'none' : 'flex';
+        }
     }
 }

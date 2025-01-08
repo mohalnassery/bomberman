@@ -37,6 +37,7 @@ class GameServer {
         this.startTimer = null;
         this.waitingInterval = null;
         this.startInterval = null;
+        this.chatMessages = []; // Add this to store chat history
         this.setupServer();
     }
 
@@ -402,6 +403,9 @@ class GameServer {
                     case 'requestSync':
                         this.sendGameState(ws);
                         break;
+                    case 'chatMessage':
+                        this.handleChatMessage(ws, data.payload);
+                        break;
                 }
             } catch (error) {
                 console.error('Error handling message:', error);
@@ -417,7 +421,12 @@ class GameServer {
         const message = JSON.stringify({ type, payload });
         this.wss.clients.forEach(client => {
             if (client.readyState === 1 && (!excludePlayerId || client.playerId !== excludePlayerId)) {
-                client.send(message);
+                try {
+                    client.send(message);
+                    console.log(`Broadcasting ${type} to ${client.playerId}`);
+                } catch (error) {
+                    console.error('Error broadcasting message:', error);
+                }
             }
         });
     }
@@ -912,6 +921,30 @@ class GameServer {
                 readyPlayerCount
             });
         }
+    }
+
+    handleChatMessage(ws, data) {
+        const { message, playerName, timestamp } = data;
+        
+        // Validate message
+        if (!message || !playerName) {
+            console.error('Invalid chat message data');
+            return;
+        }
+
+        const chatMessage = {
+            playerName,
+            message: message.slice(0, 200),
+            timestamp: timestamp || new Date().toISOString()
+        };
+
+        this.chatMessages.push(chatMessage);
+        if (this.chatMessages.length > 100) {
+            this.chatMessages.shift();
+        }
+
+        // Broadcast to everyone including sender
+        this.broadcast('chatMessage', chatMessage);
     }
 }
 
