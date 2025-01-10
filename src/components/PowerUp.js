@@ -14,28 +14,33 @@ export class PowerUp {
     }
 
     constructor(type, position, gameMap) {
-        this.type = type;
+        this.type = String(type).toLowerCase();
         this.position = position;
         this.gameMap = gameMap;
         this.collected = false;
-        this.element = null;
+        console.log('PowerUp created:', { type: this.type, position });
     }
 
     spawn() {
-        const cell = $(`.cell[data-x="${this.position.x}"][data-y="${this.position.y}"]`);
+        console.log('Spawning power-up:', { type: this.type, position: this.position });
+        const cell = document.querySelector(`.cell[data-x="${this.position.x}"][data-y="${this.position.y}"]`);
+        
         if (cell) {
-            // Add spawn animation
-            cell.classList.add('power-up-spawn');
-            setTimeout(() => {
-                cell.classList.remove('power-up-spawn');
-                cell.classList.add('power-up', `power-up-${this.type}`);
-            }, 500);
-
+            // Remove block class if it exists
+            cell.classList.remove('block');
+            
+            // Add power-up classes
+            cell.classList.add('power-up');
+            cell.classList.add(`power-up-${this.type}`);
+            
             // Update game map
             const mapCell = this.gameMap.grid[this.position.y][this.position.x];
             mapCell.type = 'powerup';
-            mapCell.powerUpType = this.type;
             mapCell.powerUp = this;
+            
+            console.log('Cell classes after spawn:', cell.classList.toString());
+        } else {
+            console.error('Cell not found for power-up spawn at:', this.position);
         }
     }
 
@@ -43,19 +48,11 @@ export class PowerUp {
         if (this.collected) return;
         
         this.collected = true;
-        
-        // Apply power-up effect
-        switch (this.type) {
-            case PowerUp.TYPES.BOMB:
-                player.maxBombs++;
-                break;
-            case PowerUp.TYPES.FLAME:
-                player.flameRange++;
-                break;
-            case PowerUp.TYPES.SPEED:
-                player.speed += 0.2;
-                break;
-        }
+        console.log("pppppppppppppppppppppppppppp",this.type)
+        console.log("ppppppppppppppppp", player)
+        player.handlePowerUp(this.type)
+
+        console.log("nnnnnnnnnnnnnnnnnnn", player)
         
         player.powerUpsCollected++;
         
