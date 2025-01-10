@@ -9,8 +9,6 @@ export class Lobby extends Component {
             players: [], 
             playerCount: 0,
             gameStarting: false,
-            readyPlayers: new Set(),
-            levelVotes: {},
             selectedLevel: null,
             gameSettings: {
                 maxPlayers: 4,
@@ -88,14 +86,14 @@ export class Lobby extends Component {
 
         // Add timer handlers
         webSocket.on('timerUpdate', (data) => {
-            const { waitingTimer, startTimer, readyPlayerCount } = data;
+            const { waitingTimer, startTimer, readyCount } = data;
             
             // Update store
             this.store.setState({
                 ...this.store.getState(),
                 waitingTimer,
                 startTimer,
-                readyPlayers: new Set(Array(readyPlayerCount).fill(true))
+                readyCount
             });
             
             // Update only the timer display if initial render is done
@@ -108,7 +106,7 @@ export class Lobby extends Component {
 
         // Game starting handler
         webSocket.on('gameStarting', () => {
-            this.store.setState({ gameStarting: true });
+            this.store.setState({ ...this.store.getState(), gameStarting: true });
             this.render();
         });
     }
@@ -178,18 +176,9 @@ export class Lobby extends Component {
     }
     
     handleVoteLevel(level) {
-        if (!this.isJoined || this.store.getState().levelVotes[this.nickname]) {
+        if (!this.isJoined) {
             return;
         }
-
-        // Update local state first for immediate feedback
-        const state = this.store.getState();
-        this.store.setState({
-            levelVotes: {
-                ...state.levelVotes,
-                [this.nickname]: level
-            }
-        });
 
         // Send vote to server
         webSocket.send('voteLevel', {
@@ -197,31 +186,37 @@ export class Lobby extends Component {
             level: level,
             sessionId: this.playerId
         });
-
-        // Update UI
-        this.updateVotesDisplay();
     }
 
     handleReadyToggle() {
         const state = this.store.getState();
-        if (!state.levelVotes[this.nickname]) {
+
+        // Get current ready state
+        const player = state.players.find(p => p.nickname === this.nickname);
+        if (!player) return;
+
+        if (!player.votedLevel) {
             alert('Please vote for a level before marking yourself as ready');
             return;
         }
 
-        // Get current ready state
-        const currentPlayer = state.players.find(p => p.nickname === this.nickname);
-        if (!currentPlayer) return;
 
         // Prevent multiple ready toggles while waiting for server response
         const readyBtn = document.getElementById('readyBtn');
         if (readyBtn) {
             readyBtn.disabled = true;
         }
+        
+        const levelBtns = document.querySelectorAll('.level-btn');
+        console.log("here,", player.ready, levelBtns);
+        levelBtns.forEach(btn => {
+            btn.disabled = !!player.ready ? false : true;
+        });
+        
+        console.log("here2,", player.ready, levelBtns);
 
         // Send ready/unready message
-        const isCurrentlyReady = currentPlayer.ready;
-        webSocket.send(isCurrentlyReady ? 'unready' : 'ready', {
+        webSocket.send(player.ready ? 'unready' : 'ready', {
             nickname: this.nickname,
             sessionId: this.playerId
         });
@@ -273,31 +268,20 @@ export class Lobby extends Component {
 
     handlePlayerReady(data) {
         const state = this.store.getState();
-        const { playerId, ready, readyCount } = data;
-        
-        // Create a new Set from the existing one
-        const readyPlayers = new Set(state.readyPlayers);
-        
-        // Update ready players set
-        if (ready) {
-            readyPlayers.add(playerId);
-        } else {
-            readyPlayers.delete(playerId);
-        }
+        const { nickname, ready, readyCount } = data;
 
-        // Update player ready status
-        const players = state.players.map(player => {
-            if (player.id === playerId) {
-                return { ...player, ready };
-            }
-            return player;
-        });
+        const players = state.players
+        const playerIdx = players.findIndex(p => p.nickname === nickname);
+        if (playerIdx === -1) {
+            console.log("something is wrong with handlePlayerReady...")
+        } else {
+            players[playerIdx].ready = ready
+        }
 
         // Update store with new state
         this.store.setState({
             ...state,
             players,
-            readyPlayers,
             readyCount // Store the server's ready count
         });
 
@@ -305,19 +289,20 @@ export class Lobby extends Component {
     }
 
     handlePlayerUnready(data) {
-        const { nickname } = data;
+        const { nickname, ready, readyCount } = data;
         const state = this.store.getState();
         
         const updatedPlayers = state.players.map(player => {
             if (player.nickname === nickname) {
-                return { ...player, ready: false };
+                return { ...player, ready: ready };
             }
             return player;
         });
 
         this.store.setState({
             ...state,
-            players: updatedPlayers
+            players: updatedPlayers,
+            readyCount 
         });
 
         // Update UI
@@ -325,16 +310,12 @@ export class Lobby extends Component {
     }
 
     handleGameState(data) {
-        const { players, readyPlayers, levelVotes, selectedLevel, gameStatus } = data;
+        const { players, selectedLevel, gameStatus } = data;
         
         // Update store with new state
         this.store.setState({
             ...this.store.getState(),
-            players: players.map(player => ({
-                ...player,
-                ready: readyPlayers.includes(player.id)
-            })),
-            levelVotes: levelVotes || {},
+            players,
             selectedLevel,
             playerCount: players.length
         });
@@ -348,32 +329,33 @@ export class Lobby extends Component {
     }
 
     handleLevelVoted(data) {
-        const { nickname, level, votes } = data;
+        const { nickname, level } = data;
         const state = this.store.getState();
+
+        const players = state.players
+        const playerIdx = players.findIndex(p => p.nickname === nickname);
+        if (playerIdx === -1) {
+            console.log("something is wrong with handleLevelVoted...")
+        } else {
+            players[playerIdx].votedLevel = level
+        }
         
         // Update the votes count atomically
         this.store.setState({
-            levelVotes: {
-                ...state.levelVotes,
-                [level]: votes
-            }
+            ...state,
+            players
         });
 
         // Update UI
         this.updateVotesDisplay();
-        
-        // Disable voting buttons after player has voted
-        if (nickname === this.nickname) {
-            const levelBtns = document.querySelectorAll('.level-btn');
-            levelBtns.forEach(btn => {
-                btn.disabled = true;
-            });
-        }
     }
 
     handleLevelSelected(data) {
         const { level } = data;
-        this.store.setState({ selectedLevel: level });
+        this.store.setState({ 
+            ...this.store.getState(),
+            selectedLevel: level 
+        });
         
         // Notify all players of the selected level
         const notification = document.createElement('div');
@@ -407,7 +389,6 @@ export class Lobby extends Component {
         this.store.setState({
             ...this.store.getState(),
             players: data.players,
-            readyPlayers: new Set(data.readyPlayers),
             levelVotes: data.levelVotes || {},
             selectedLevel: data.selectedLevel,
             playerCount: data.playerCount,
@@ -425,6 +406,7 @@ export class Lobby extends Component {
         if (state.gameStarting) return;
 
         this.store.setState({ 
+            ...this.store.getState(),
             gameStarting: true, 
             countdown: countdown 
         });
@@ -511,12 +493,14 @@ export class Lobby extends Component {
     }
 
     updateVotesDisplay() {
+        console.log('updateVotesDisplay')
         const state = this.store.getState();
+        const player = state.players.find(p => p.nickname === this.nickname);
         
         // Update vote counts for each level
         ['L1', 'L2', 'L3', 'L4', 'L5', 'L6'].forEach(level => {
             // Count votes for this level
-            const votes = Object.values(state.levelVotes).filter(vote => vote === level).length;
+            const votes = Object.values(state.players).filter(p => p.votedLevel === level).length;
             
             // Update the vote count display
             const voteDisplay = document.querySelector(`[data-level="${level}"] .vote-count`);
@@ -527,11 +511,11 @@ export class Lobby extends Component {
             // Update button states
             const levelBtn = document.querySelector(`[data-level="${level}"]`);
             if (levelBtn) {
-                // Disable if player has already voted
-                levelBtn.disabled = !!state.levelVotes[this.nickname];
+                // Disable if player is already ready
+                levelBtn.disabled = !!player.ready;
                 
                 // Highlight if this is the selected level
-                if (state.levelVotes[this.nickname] === level) {
+                if (player.votedLevel === level) {
                     levelBtn.classList.add('selected');
                 } else {
                     levelBtn.classList.remove('selected');
@@ -542,9 +526,8 @@ export class Lobby extends Component {
         // Update ready button state
         const readyBtn = document.getElementById('readyBtn');
         if (readyBtn) {
-            const player = state.players.find(p => p.nickname === this.nickname);
             const isReady = player ? player.ready : false;
-            readyBtn.disabled = !state.levelVotes[this.nickname];
+            readyBtn.disabled = !player.votedLevel;
             readyBtn.textContent = isReady ? 'Not Ready' : 'Ready';
             if (isReady) {
                 readyBtn.classList.add('ready');
@@ -563,10 +546,10 @@ export class Lobby extends Component {
         
         if (playerListElement) {
             playerListElement.innerHTML = state.players.map(player => `
-                <div class="player-item ${state.readyPlayers.has(player.id) ? 'ready' : ''}">
+                <div class="player-item ${player.ready ? 'ready' : ''}">
                     <span class="player-name">${player.nickname}</span>
-                    <span class="player-status">${state.readyPlayers.has(player.id) ? '✓ Ready' : 'Not Ready'}</span>
-                    ${state.levelVotes[player.nickname] ? `<span class="player-vote">Vote: ${state.levelVotes[player.nickname]}</span>` : ''}
+                    <span class="player-status">${player.ready ? '✓ Ready' : 'Not Ready'}</span>
+                    ${player.votedLevel ? `<span class="player-vote">Vote: ${player.votedLevel}</span>` : ''}
                 </div>
             `).join('');
         }
@@ -614,7 +597,6 @@ export class Lobby extends Component {
             gameState: {
                 selectedLevel: selectedLevel,
                 players: state.players,
-                readyPlayers: Array.from(state.readyPlayers),
                 gameStatus: 'running',
                 timestamp: Date.now()
             }
@@ -652,7 +634,7 @@ export class Lobby extends Component {
             html += `
             <div class="lobby-controls-container">
                 <button id="readyBtn" class="${isReady ? 'ready' : ''}" 
-                            ${!state.levelVotes[this.nickname] ? 'disabled' : ''}>
+                            ${!currentPlayer.votedLevel ? 'disabled' : ''}>
                         ${isReady ? 'Not Ready' : 'Ready'}
                 </button>
                 <div class="level-selection">
@@ -662,13 +644,13 @@ export class Lobby extends Component {
                         ${Array.from({ length: 6 }, (_, i) => i + 1)
                             .map(level => {
                                 const levelKey = `L${level}`;
-                                const votes = Object.values(state.levelVotes)
-                                    .filter(vote => vote === levelKey).length;
-                                const isSelected = state.levelVotes[this.nickname] === levelKey;
+                                const votes = Object.values(state.players)
+                                    .filter(p => p.votedLevel === levelKey).length;
+                                const isSelected = currentPlayer.votedLevel === levelKey;
                                 return `
                                     <button class="level-btn ${isSelected ? 'selected' : ''}" 
                                             data-level="${levelKey}" 
-                                            ${state.levelVotes[this.nickname] ? 'disabled' : ''}>
+                                             ${currentPlayer.ready ? 'disabled' : ''}>
                                         Level ${level}
                                         <span class="vote-count">${votes}</span>
                                     </button>
@@ -687,7 +669,7 @@ export class Lobby extends Component {
                 </div>
                 <div class="stats-container">
                     <div class="player-count">
-                        Ready Players: ${state.readyPlayers.size} / ${state.gameSettings.maxPlayers}
+                        Ready Players: ${state.readyCount} / ${state.gameSettings.maxPlayers}
                     </div>
                     <div class="time-count ${(state.startTimer !== null && state.startTimer <= 5) ? 'urgent' : ''}">
                         ${this.getTimerDisplay()}
