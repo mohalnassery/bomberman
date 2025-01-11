@@ -460,6 +460,13 @@ class GameServer {
 
     handlePlayerJoin(ws, data) {
         const { nickname, sessionId } = data;
+        if (Array.from(this.gameState.players.values()).some((p) => p.nickname === nickname)) {
+            ws.send(JSON.stringify({
+                type: 'playerDenied',
+                payload: { message: "Nickname Already in use" }
+            }));
+            return;
+        }
         ws.playerId = sessionId;
         
         const player = {
