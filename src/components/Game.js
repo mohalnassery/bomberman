@@ -475,36 +475,55 @@ export class Game extends Component {
         const gameContainer = document.createElement('div');
         gameContainer.className = 'game-container';
 
+        // Get local player reference
+        const localPlayer = this.players.get(this.localPlayerId);
+        
         // Create left panel (stats)
         const leftPanel = document.createElement('div');
         leftPanel.className = 'game-panel left-panel';
-        leftPanel.innerHTML = `
-            <div class="player-stats">
-                <h3>Player Stats</h3>
-                <div class="stats-item">
-                    <span class="stats-label">Lives:</span>
-                    <span class="stats-value lives">${this.lives || 3}</span>
-                </div>
-                <div class="stats-item">
-                    <span class="stats-label">Power-Ups:</span>
-                    <div class="power-ups-list">
-                        <div class="power-up-item">
-                            <span class="power-up-icon bomb">🎆</span>
-                            <span class="power-up-count">${this.bombCount || 0}</span>
-                        </div>
-                        <div class="power-up-item">
-                            <span class="power-up-icon flame">🔥</span>
-                            <span class="power-up-count">${this.flameCount || 0}</span>
-                        </div>
-                        <div class="power-up-item">
-                            <span class="power-up-icon speed">⚡</span>
-                            <span class="power-up-count">${this.speedCount || 0}</span>
+        
+        if (localPlayer) {
+            leftPanel.innerHTML = `
+                <div class="player-stats">
+                    <h3>${localPlayer.name}</h3>
+                    <div class="stats-item">
+                        <span class="stats-label">Lives:</span>
+                        <span class="stats-value lives">${localPlayer.lives}</span>
+                    </div>
+                    <div class="stats-item">
+                        <span class="stats-label">Power-ups:</span>
+                        <div class="power-ups-list">
+                            <div class="power-up-item">
+                                <span class="power-up-icon">💣</span>
+                                <span class="power-up-value">${localPlayer.maxBombs}</span>
+                                <span class="power-up-count">(${localPlayer.bombCount})</span>
+                            </div>
+                            <div class="power-up-item">
+                                <span class="power-up-icon">🔥</span>
+                                <span class="power-up-value">${localPlayer.flameRange}</span>
+                                <span class="power-up-count">(${localPlayer.flameCount})</span>
+                            </div>
+                            <div class="power-up-item">
+                                <span class="power-up-icon">⚡</span>
+                                <span class="power-up-value">${Math.round(localPlayer.speed * 10) / 10}</span>
+                                <span class="power-up-count">(${localPlayer.speedCount})</span>
+                            </div>
                         </div>
                     </div>
+                    <button id="leaveGameBtn" class="leave-game-btn">Leave Game</button>
                 </div>
-                <button id="leaveGameBtn" class="leave-game-btn">Leave Game</button>
-            </div>
-        `;
+            `;
+        } else {
+            leftPanel.innerHTML = `
+                <div class="player-stats">
+                    <h3>Waiting for player...</h3>
+                    <button id="leaveGameBtn" class="leave-game-btn">Leave Game</button>
+                </div>
+            `;
+        }
+
+        // Add panel to game container
+        gameContainer.appendChild(leftPanel);
 
         // Create center panel (game map)
         const centerPanel = document.createElement('div');

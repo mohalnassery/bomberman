@@ -7,6 +7,7 @@
     height: fit-content;
 }
 
+/* Base cell style */
 .cell {
     width: 35px;
     height: 35px;
@@ -14,23 +15,45 @@
     justify-content: center;
     align-items: center;
     position: relative;
-    transition: all 0.2s ease;
 }
 
-
+/* Empty cell */
 .cell.empty {
     background-color: #444;
 }
 
+/* Power-up styles */
+.cell.power-up.power-up-bomb {
+    background: url('./image/bomb.png') center/contain no-repeat;
+}
 
+.cell.power-up.power-up-flame {
+    background: url('./image/flame.png') center/contain no-repeat;
+}
+
+.cell.power-up.power-up-speed {
+    background: url('./image/speed.png') center/contain no-repeat;
+}
+
+/* Block style - should completely cover any background */
+.cell.block {
+    background: #38813a;
+    border: 1px solid #555;
+}
+
+/* Make sure block overrides everything */
+.cell.block.power-up,
+.cell.block.power-up-bomb,
+.cell.block.power-up-flame,
+.cell.block.power-up-speed {
+    background: #38813a;
+}
+
+/* Wall style */
 .cell.wall {
     background-color: #666;
     border: 2px solid #333;
-}
-
-.cell.block {
-    background-color: #38813a;
-    border: 1px solid #555;
+    z-index: 10;  /* Same as blocks */
 }
 
 .player-character {
@@ -127,6 +150,8 @@
     0% { transform: scale(1); opacity: 1; }
     100% { transform: scale(1.5); opacity: 0; }
 }
+
+
 
 
 /* Game Container and Camera */
@@ -451,29 +476,4 @@
 .left-panel::-webkit-scrollbar-track,
 .right-panel::-webkit-scrollbar-track {
     background: rgba(0, 0, 0, 0.1);
-}
-
-/* Base power-up styling
-.power-up {
-    position: absolute;
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-    z-index: 2;
-} */
-
-/* Specific power-up types */
-.power-up-bomb {
-    /* background-image: url('../assets/powerup-bomb.png'); */
-    background-color: #4CAF50;
-}
-
-.power-up-flame {
-    /* background-image: url('../assets/powerup-flame.png'); */
-    background-color: #e74444;
-}
-
-.power-up-speed {
-    /* background-image: url('../assets/powerup-speed.png'); */
-    background-color: #2196F3;
 }

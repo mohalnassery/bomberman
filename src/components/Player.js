@@ -33,7 +33,7 @@ export class Player {
         this.serverPosition = { ...this.position }; // Server's last known position
         this.targetPosition = { ...this.position };  // Position to interpolate towards
         this.lives = 3;
-        this.speed = 4;
+        this.speed = 3.6;
         this.maxBombs = 1;
         this.activeBombs = 0;
         this.flameRange = 1;
@@ -50,7 +50,6 @@ export class Player {
 
         // Initialize movement properties
         this.keysPressed = {};
-        this.speed = 4;
         this.isMoving = false;
 
         // Bind methods
@@ -62,6 +61,11 @@ export class Player {
             console.log('Setting up controls for local player:', this.id);
             this.initControls();
         }
+
+        // Add power-up counters
+        this.bombCount = 0;
+        this.flameCount = 0;
+        this.speedCount = 0;
     }
 
     createPlayerElement() {
@@ -171,15 +175,35 @@ export class Player {
     }
 
     handlePowerUp(type) {
+        const LIMITS = {
+            bomb: 4,    // Maximum bombs
+            flame: 3,   // Maximum flame length 
+            speed: 4  // Maximum speed 
+        };
+
         switch (type) {
             case 'bomb':
-                this.maxBombs++;
+                if (this.maxBombs < LIMITS.bomb) {
+                    this.maxBombs++;
+                    this.bombCount++;
+                    console.log(`Bombs increased to: ${this.maxBombs}, Total collected: ${this.bombCount}`);
+                }
                 break;
+                
             case 'flame':
-                this.flameRange++;
+                if (this.flameRange < LIMITS.flame) {
+                    this.flameRange++;
+                    this.flameCount++;
+                    console.log(`Flame range increased to: ${this.flameRange}, Total collected: ${this.flameCount}`);
+                }
                 break;
+                
             case 'speed':
-                this.speed += 0.2;
+                if (this.speed < LIMITS.speed) {
+                    this.speed = Math.min(this.speed + 0.1, LIMITS.speed);
+                    this.speedCount++;
+                    console.log(`Speed increased to: ${this.speed}, Total collected: ${this.speedCount}`);
+                }
                 break;
         }
         this.powerUpsCollected++;
@@ -227,6 +251,17 @@ export class Player {
         if (position) {
             this.position = position;
         }
+
+            // Reset all power-ups and counters
+    this.maxBombs = 1;        // Reset to initial bomb count
+    this.flameRange = 1;      // Reset to initial flame range
+    this.speed = 3.6;         // Reset to initial speed
+    
+    // Reset power-up counters
+    this.bombCount = 0;
+    this.flameCount = 0;
+    this.speedCount = 0;
+    
 
         // Play death sound
         const audio = new Audio('/assets/sounds/death.mp3');

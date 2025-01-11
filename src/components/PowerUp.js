@@ -48,12 +48,7 @@ export class PowerUp {
         if (this.collected) return;
         
         this.collected = true;
-        console.log("pppppppppppppppppppppppppppp",this.type)
-        console.log("ppppppppppppppppp", player)
         player.handlePowerUp(this.type)
-
-        console.log("nnnnnnnnnnnnnnnnnnn", player)
-        
         player.powerUpsCollected++;
         
         // Update game map
