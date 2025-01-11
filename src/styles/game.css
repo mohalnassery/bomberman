@@ -112,10 +112,10 @@
     animation: explode 0.5s ease-out;
 }
 
-.cell.powerup {
+/* .cell.powerup {
     background-color: #f1c40f;
     border-radius: 5px;
-}
+} */
 
 @keyframes pulse {
     0% { transform: scale(1); }
@@ -451,4 +451,29 @@
 .left-panel::-webkit-scrollbar-track,
 .right-panel::-webkit-scrollbar-track {
     background: rgba(0, 0, 0, 0.1);
+}
+
+/* Base power-up styling
+.power-up {
+    position: absolute;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    z-index: 2;
+} */
+
+/* Specific power-up types */
+.power-up-bomb {
+    /* background-image: url('../assets/powerup-bomb.png'); */
+    background-color: #4CAF50;
+}
+
+.power-up-flame {
+    /* background-image: url('../assets/powerup-flame.png'); */
+    background-color: #e74444;
+}
+
+.power-up-speed {
+    /* background-image: url('../assets/powerup-speed.png'); */
+    background-color: #2196F3;
 }

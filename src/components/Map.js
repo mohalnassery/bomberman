@@ -14,7 +14,7 @@ export class GameMap {
     }
 
     loadLevel(levelNumber, serverGrid) {
-        if (this.isLoaded) return
+        if (this.isLoaded) return;
         try {
             // Clear existing state
             this.activeBombs.clear();
@@ -24,7 +24,7 @@ export class GameMap {
             this.grid = Array(this.height).fill().map(() =>
                 Array(this.width).fill().map(() => ({
                     type: 'empty',
-                    powerUp: null,
+                    powerUp: null,  // Make sure this is null initially
                     bomb: null
                 }))
             );
@@ -345,12 +345,13 @@ export class GameMap {
                 }
             }
         }
-        const cells = Array.from(mapGrid.children)
+        const cells = Array.from(mapGrid.children);
         cells.forEach((cell) => {
-            const cellData = this.grid[cell.dataset.y][cell.dataset.x]
+            const cellData = this.grid[cell.dataset.y][cell.dataset.x];
             if (cellData) {
+                // Handle basic cell types
                 if (cellData.type !== 'empty' && !cell.classList.contains(cellData.type)) {
-                    cell.classList.add(cellData.type)
+                    cell.classList.add(cellData.type);
                 }
                 if (cellData.type !== 'block' && cell.classList.contains('block')) {
                     cell.classList.remove('block');
@@ -359,11 +360,23 @@ export class GameMap {
                     cell.classList.remove('wall');
                 }
 
-                if (cellData.powerUp && !cell.classList.contains(`power-up-${cellData.powerUp}`)) {
-                    cell.classList.add('power-up', `power-up-${cellData.powerUp}`);
-                } else if (!cellData.powerUp && cell.classList.contains(`power-up-${cellData.powerUp}`)) {
-                    cell.classList.remove('power-up', `power-up-${cellData.powerUp}`);
+                // Debug power-up data
+                if (cellData.powerUp) {
+                    // Ensure we have a valid string type
+                    const powerUpType = typeof cellData.powerUp === 'string' 
+                        ? cellData.powerUp.toLowerCase() 
+                        : cellData.powerUp.type?.toLowerCase();
+                        
+                    if (powerUpType && !cell.classList.contains(`power-up-${powerUpType}`)) {
+                        cell.classList.add('power-up', `power-up-${powerUpType}`);
+                    }
+                } else if (cell.classList.contains('power-up')) {
+                    cell.classList.remove('power-up');
+                    ['bomb', 'flame', 'speed'].forEach(type => {
+                        cell.classList.remove(`power-up-${type}`);
+                    });
                 }
+
                 if (cellData.bomb && !cell.classList.contains('bomb')) {
                     cell.classList.add('bomb');
                 } else if (!cellData.bomb && cell.classList.contains('bomb')) {
@@ -375,7 +388,7 @@ export class GameMap {
                     cell.classList.remove('explosion');
                 }
             }
-        })
+        });
     }
 }
 

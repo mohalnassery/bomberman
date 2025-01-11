@@ -1,6 +1,7 @@
 // src/components/Game.js
 import { Component } from '../core/component.js';
 import { GameMap } from './Map.js';
+import {PowerUp} from './PowerUp.js';
 import { Player } from './Player.js';
 import { Chat } from './Chat.js';
 import webSocket from '../core/websocket.js';
@@ -31,6 +32,7 @@ export class Game extends Component {
         this.handleGameOver = this.handleGameOver.bind(this);
 
         this.setupWebSocket();
+        webSocket.connect();
         this.start();
 
         // Initialize chat
@@ -179,13 +181,17 @@ export class Game extends Component {
     // -- WEBSOCKET LISTENERS --
 
     setupWebSocket() {
-        console.log('Setting up WebSocket handlers');
+        console.log('Setting up WebSocket handlers in Game.js');
 
-        // Add a general message listener to debug what's coming in
+        // Debug all incoming messages
         webSocket.socket.addEventListener('message', (event) => {
-            //console.log('Raw WebSocket message received:', event.data);
-            const data = JSON.parse(event.data);
-            //console.log('Parsed message:', data);
+            console.log('Raw WebSocket message received:', event.data);
+            try {
+                const data = JSON.parse(event.data);
+                console.log('Parsed WebSocket message:', data);
+            } catch (error) {
+                console.error('Error parsing WebSocket message:', error);
+            }
         });
 
         webSocket.on('gameState', this.handleGameState);
@@ -201,7 +207,41 @@ export class Game extends Component {
                 this.chat.receiveMessage(data);
             }
         });
+        webSocket.on('powerUpSpawned', (data) => {
+            const { type, position } = data;
+            console.log('Received powerUpSpawned:', { type, position });
+            
+            // Add validation
+            if (!this.map || !this.map.grid) {
+                console.error('Game map not initialized');
+                return;
+            }
+            
+            // Create and spawn power-up using PowerUp class
+            const powerUp = new PowerUp(type, position, this.map);
+            powerUp.spawn();
+            
+            // Store power-up reference in map
+            this.map.grid[position.y][position.x].powerUp = powerUp;
+            
+            console.log('Power-up spawned:', powerUp);
+        });
+        webSocket.on('powerUpCollected', (data) => {
+            const { playerId, position, type } = data;
+            console.log('Power-up collected:', data);
+            
+            const player = this.players.get(playerId);
+            if (!player) return;
+
+            // Get power-up from map and collect it
+            const mapCell = this.map.grid[position.y][position.x];
+            if (mapCell && mapCell.powerUp) {
+                mapCell.powerUp.collect(player);
+            }
+        });
+        console.log('WebSocket handlers setup complete');
     }
+
 
     handleGameState(data) {
         console.log('Received game state:', data);
