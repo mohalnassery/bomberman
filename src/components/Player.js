@@ -36,7 +36,12 @@ export class Player {
         this.speed = 4;
         this.maxBombs = 1;
         this.activeBombs = 0;
-        this.flameRange = 1;
+        this.flameRange = 2;
+        this.initialPowers = {
+            speed: 4,
+            maxBombs: 1,
+            flameRange: 2
+        }
         this.isDead = false;
         this.bombsPlaced = 0;
         this.killCount = 0;
@@ -50,7 +55,6 @@ export class Player {
 
         // Initialize movement properties
         this.keysPressed = {};
-        this.speed = 4;
         this.isMoving = false;
 
         // Bind methods
@@ -173,13 +177,13 @@ export class Player {
     handlePowerUp(type) {
         switch (type) {
             case 'bomb':
-                this.maxBombs++;
+                this.maxBombs = Math.min(this.maxBombs + 1, 8);
                 break;
             case 'flame':
-                this.flameRange++;
+                this.flameRange = Math.min(this.flameRange + 1, 15);
                 break;
             case 'speed':
-                this.speed += 0.2;
+                this.speed = Math.min(this.speed + 1, 10);
                 break;
         }
         this.powerUpsCollected++;
@@ -203,17 +207,17 @@ export class Player {
                 playerElement.classList.remove('damaged');
             }, 500);
         }
+        const countElement = $(`.stats-value.lives`)
+        if (this.isLocal && countElement) {
+            countElement.innerHTML = Math.round(this.lives)
+        }
 
         if (this.lives <= 0) {
             this.die();
             return true; // Player died
         }
 
-        // Player took damage but survived
-        webSocket.send('playerDamaged', {
-            playerId: this.id,
-            lives: this.lives
-        });
+
 
         return false; // Player still alive
     }

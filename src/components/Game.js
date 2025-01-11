@@ -30,6 +30,7 @@ export class Game extends Component {
         this.handleBombPlaced = this.handleBombPlaced.bind(this);
         this.handleBombExplosion = this.handleBombExplosion.bind(this);
         this.handleGameOver = this.handleGameOver.bind(this);
+        this.handlePowerUpCollected = this.handlePowerUpCollected.bind(this)
 
         this.setupWebSocket();
         webSocket.connect();
@@ -200,43 +201,11 @@ export class Game extends Component {
         webSocket.on('gameOver', this.handleGameOver);
         webSocket.on('bombPlaced',this.handleBombPlaced);
         webSocket.on('bombExplosion',this.handleBombExplosion);
-
+        webSocket.on('powerUpCollected',this.handlePowerUpCollected);
         // Add chat message handler
         webSocket.on('chatMessage', (data) => {
             if (this.chat) {
                 this.chat.receiveMessage(data);
-            }
-        });
-        webSocket.on('powerUpSpawned', (data) => {
-            const { type, position } = data;
-            console.log('Received powerUpSpawned:', { type, position });
-            
-            // Add validation
-            if (!this.map || !this.map.grid) {
-                console.error('Game map not initialized');
-                return;
-            }
-            
-            // Create and spawn power-up using PowerUp class
-            const powerUp = new PowerUp(type, position, this.map);
-            powerUp.spawn();
-            
-            // Store power-up reference in map
-            this.map.grid[position.y][position.x].powerUp = powerUp;
-            
-            console.log('Power-up spawned:', powerUp);
-        });
-        webSocket.on('powerUpCollected', (data) => {
-            const { playerId, position, type } = data;
-            console.log('Power-up collected:', data);
-            
-            const player = this.players.get(playerId);
-            if (!player) return;
-
-            // Get power-up from map and collect it
-            const mapCell = this.map.grid[position.y][position.x];
-            if (mapCell && mapCell.powerUp) {
-                mapCell.powerUp.collect(player);
             }
         });
         console.log('WebSocket handlers setup complete');
@@ -338,6 +307,7 @@ export class Game extends Component {
             destroyedBlocks,
             affectedPlayers,
             chainReaction,
+            powerUpsSpawned,
             bomberId,
             timestamp
         } = data;
@@ -348,6 +318,19 @@ export class Game extends Component {
 
         // Remove the bomb & blocks and add the explosion effect
         this.map.explodeBomb(bombId, destroyedBlocks, affectedPositions);
+
+        powerUpsSpawned.forEach((powerUpData) => {
+            const { type, position } = powerUpData;
+            
+            // Create and spawn power-up using PowerUp class
+            const powerUp = new PowerUp(type, position, this.map);
+            powerUp.spawn();
+            
+            // Store power-up reference in map
+            this.map.grid[position.y][position.x].powerUp = powerUp;
+            
+            console.log('Power-up spawned:', powerUp);
+        })
 
         // Handle affected players
         affectedPlayers.forEach((playerId, index) => {
@@ -360,6 +343,21 @@ export class Game extends Component {
                 player.position = player.spawnPosition || this.map.getPlayerStartPosition(index) || player.position
             }
         });
+    }
+
+    handlePowerUpCollected(data) {
+        const { playerId, position, type } = data;
+        console.log('Power-up collected:', data);
+        
+        const player = this.players.get(playerId);
+        if (!player) return;
+
+        // Get power-up from map and collect it
+        const mapCell = this.map.grid[position.y][position.x];
+        if (mapCell && mapCell.powerUp) {
+            console.log("here", playerId, this.localPlayerId, playerId === this.localPlayerId)
+            mapCell.powerUp.collect(player);
+        }
     }
 
     handlePlayerDeath(data) {
@@ -388,33 +386,6 @@ export class Game extends Component {
     handleError(error) {
         console.error('Game error:', error);
         // Handle error appropriately (show message to user, etc.)
-    }
-
-    handlePowerUpCollection(data) {
-        const {
-            playerId,
-            position,
-            type,
-            stats
-        } = data;
-
-        // Update player stats
-        const player = this.players.get(playerId);
-        player?.handlePowerUp(type);
-        this.map.removePowerUp(position)
-    }
-
-    getPowerUpDisplayText(type) {
-        switch (type) {
-            case 'bomb':
-                return '+1 Bomb';
-            case 'flame':
-                return '+1 Range';
-            case 'speed':
-                return '+Speed';
-            default:
-                return '';
-        }
     }
 
     // -- SPECTATOR MODE --
@@ -485,6 +456,8 @@ export class Game extends Component {
             gameContainer.className = 'game-container';
 
             // Create left panel (stats)
+            
+            const player = this.players.get(this.localPlayerId)
             const leftPanel = document.createElement('div');
             leftPanel.className = 'game-panel left-panel';
             leftPanel.innerHTML = `
@@ -492,22 +465,22 @@ export class Game extends Component {
                     <h3>Player Stats</h3>
                     <div class="stats-item">
                         <span class="stats-label">Lives:</span>
-                        <span class="stats-value lives">${this.lives || 3}</span>
+                        <span class="stats-value lives">${player.lives || 3}</span>
                     </div>
                     <div class="stats-item">
                         <span class="stats-label">Power-Ups:</span>
                         <div class="power-ups-list">
                             <div class="power-up-item">
                                 <span class="power-up-icon bomb">🎆</span>
-                                <span class="power-up-count">${this.bombCount || 0}</span>
+                                <span class="power-up-count bomb">${Math.floor(player.maxBombs - player.initialPowers.maxBombs) || 0}</span>
                             </div>
                             <div class="power-up-item">
                                 <span class="power-up-icon flame">🔥</span>
-                                <span class="power-up-count">${this.flameCount || 0}</span>
+                                <span class="power-up-count flame">${Math.floor(player.flameRange - player.initialPowers.flameRange) || 0}</span>
                             </div>
                             <div class="power-up-item">
                                 <span class="power-up-icon speed">⚡</span>
-                                <span class="power-up-count">${this.speedCount || 0}</span>
+                                <span class="power-up-count speed">${Math.floor(player.speed-player.initialPowers.speed) || 0}</span>
                             </div>
                         </div>
                     </div>

@@ -171,12 +171,29 @@ class GameServer {
         const cell = this.gameState.grid[playerY][playerX];
         if (cell && cell.type === 'powerup' && cell.powerUp) {
             console.log('Player collecting power-up:', cell.powerUp);
+
+            switch (cell.powerUp) {
+                case 'bomb':
+                    player.maxBombs = Math.min(player.maxBombs + 1, 8);
+                    break;
+                case 'flame':
+                    player.flameRange = Math.min(player.flameRange + 1, 8);
+                    break;
+                case 'speed':
+                    player.speed = Math.min(player.speed + 0.5, 10);
+                    break;
+            }
             
             // Broadcast power-up collection
             this.broadcast('powerUpCollected', {
                 playerId,
                 position: { x: playerX, y: playerY },
-                type: cell.powerUp
+                type: cell.powerUp, 
+                stats: {
+                    maxBombs: player.maxBombs,
+                    flameRange: player.flameRange,
+                    speed: player.speed
+                }
             });
             
             // Clear the cell
@@ -225,6 +242,7 @@ class GameServer {
         const chainReactionBombs = new Set();
         const destroyedBlocks = new Set();
         const affectedPlayers = new Set();
+        const powerUpsSpawned = new Set();
 
 
         const bomber = this.gameState.players.get(bomb.playerId)
@@ -240,12 +258,10 @@ class GameServer {
                     console.log('Found power-up in block:', cell.powerUp);
                     // Just update the cell type and keep the powerUp
                     cell.type = 'powerup';
-                    
-                    // Broadcast power-up reveal
-                    this.broadcast('powerUpSpawned', {
+                    powerUpsSpawned.add({
                         type: cell.powerUp,
                         position: pos
-                    });
+                    })
                 } else {
                     cell.type = 'empty';
                     cell.powerUp = null;
@@ -253,7 +269,7 @@ class GameServer {
             }
 
             // Check for chain reactions with other bombs
-            const bombAtPosition = this.gameState.grid[pos.y][pos.x].bomb;
+            const bombAtPosition = cell.bomb;
             if (bombAtPosition) {
                 chainReactionBombs.add(bombAtPosition.id);
             }
@@ -288,6 +304,7 @@ class GameServer {
             destroyedBlocks: Array.from(destroyedBlocks),
             affectedPlayers: Array.from(affectedPlayers),
             chainReaction: Array.from(chainReactionBombs),
+            powerUpsSpawned: Array.from(powerUpsSpawned),
             bomberId: bomb.playerId,
             timestamp: Date.now()
         });
@@ -306,48 +323,6 @@ class GameServer {
 
         // Check game over condition
         this.checkGameOver();
-    }
-
-    handlePowerUpCollection(ws, data) {
-        const playerId = ws.playerId;
-        const { position } = data;
-        
-        // Validate power-up exists
-        if (this.gameState.grid[position.y][position.x].type === 'powerup') {
-            const powerUpType = this.gameState.grid[position.y][position.x].powerUp;
-            const player = this.gameState.players.get(playerId);
-            
-            // Apply power-up effect
-            switch (powerUpType) {
-                case 'bomb':
-                    player.maxBombs = Math.min(player.maxBombs + 1, 8);
-                    break;
-                case 'flame':
-                    player.flameRange = Math.min(player.flameRange + 1, 8);
-                    break;
-                case 'speed':
-                    player.speed = Math.min(player.speed + 0.2, 2.5);
-                    break;
-            }
-            
-            // Clear power-up from grid
-            this.gameState.grid[position.y][position.x] = {
-                type: 'empty',
-                powerUp: null
-            };
-            
-            // Broadcast collection to all clients
-            this.broadcast('powerUpCollected', {
-                playerId,
-                position,
-                type: powerUpType,
-                stats: {
-                    maxBombs: player.maxBombs,
-                    flameRange: player.flameRange,
-                    speed: player.speed
-                }
-            });
-        }
     }
 
     calculateExplosionArea(position, range) {
@@ -369,7 +344,7 @@ class GameServer {
                 const y = Math.round(position.y + (dir.y * i));
 
                 // Check map boundaries
-                if (x < 0 || x >= this.mapWidth || y < 0 || y >= this.mapHeight || this.gameState.grid[y][x] === "wall") {
+                if (x < 0 || x >= this.mapWidth || y < 0 || y >= this.mapHeight || this.gameState.grid[y][x].type === "wall") {
                     break;
                 }
 
@@ -377,7 +352,7 @@ class GameServer {
                 positions.push({ x, y });
 
                 // Stop if we hit a wall
-                if (this.gameState.grid[y][x] === 'block') {
+                if (this.gameState.grid[y][x].type === 'block') {
                     break;
                 }
             }
@@ -420,12 +395,6 @@ class GameServer {
                         break;
                     case 'chatMessage':
                         this.handleChatMessage(ws, data.payload);
-                        break;
-                    case 'powerUpCollected':
-                        this.handlePowerUpCollection(ws, data.payload);
-                        break;
-                    case 'powerUpSpawned':  // Add this case
-                        this.handlePowerUpSpawn(ws, data.payload);
                         break;
                 }
             } catch (error) {
@@ -797,7 +766,8 @@ class GameServer {
         }
 
         this.waitingTimer = null;
-        this.startTimer = 10;
+        // 10s
+        this.startTimer = 3;
 
         // Broadcast initial countdown state
         this.broadcastTimers();
@@ -830,7 +800,7 @@ class GameServer {
 
     startWaitingPhase() {
         // Start 20s waiting timer for 2-3 players
-        this.waitingTimer = 20;
+        this.waitingTimer = 5;
         this.gameState.gameStatus = "waiting"
         console.log('Starting waiting timer:', this.waitingTimer); // Debug log
 
@@ -870,71 +840,6 @@ class GameServer {
             this.broadcastTimers()
         }
     }
-
-    handlePowerUpCollection(ws, data) {
-        const playerId = ws.playerId;
-        const { position } = data;
-        
-        // Validate power-up exists
-        if (this.gameState.grid[position.y][position.x].type === 'powerup') {
-            const powerUpType = this.gameState.grid[position.y][position.x].powerUp;
-            const player = this.gameState.players.get(playerId);
-            
-            // Apply power-up effect
-            switch (powerUpType) {
-                case 'bomb':
-                    player.maxBombs = Math.min(player.maxBombs + 1, 8);
-                    break;
-                case 'flame':
-                    player.flameRange = Math.min(player.flameRange + 1, 8);
-                    break;
-                case 'speed':
-                    player.speed = Math.min(player.speed + 0.2, 2.5);
-                    break;
-            }
-            
-            // Clear power-up from grid
-            this.gameState.grid[position.y][position.x] = {
-                type: 'empty',
-                powerUp: null
-            };
-            
-            // Broadcast collection to all clients
-            this.broadcast('powerUpCollected', {
-                playerId,
-                position,
-                type: powerUpType,
-                stats: {
-                    maxBombs: player.maxBombs,
-                    flameRange: player.flameRange,
-                    speed: player.speed
-                }
-            });
-        }
-    }
-
-//     handlePowerUpSpawn(ws, data) {
-//         const { position } = data;
-        
-//         // Validate position
-//         if (!this.gameState.grid[position.y] || !this.gameState.grid[position.y][position.x]) {
-//             return;
-//         }
-        
-//         // Only spawn if cell is empty
-//         if (this.gameState.grid[position.y][position.x].type === 'empty') {
-//             const powerUpType = ['bomb', 'flame', 'speed'][Math.floor(Math.random() * 3)];
-            
-//             // Update game state
-//             this.gameState.grid[position.y][position.x] = {
-//                 type: 'powerup',
-//                 powerUp: powerUpType
-//             };
-            
-//             console.log('Power-up spawnedxxxxxx:', { type: powerUpType, position });
-    
-//         }
-   //}
 }
 
 // Start the server
