@@ -36,7 +36,7 @@ class GameServer {
         this.startTimer = null;
         this.waitingInterval = null;
         this.startInterval = null;
-        this.chatMessages = []; // Add this to store chat history
+        this.chatMessages = []; 
         this.setupServer();
     }
 
@@ -111,6 +111,7 @@ class GameServer {
 
     checkGameOver() {
         if (this.gameState.gameStatus !== 'running') return;
+
         const alivePlayers = Array.from(this.gameState.players.values())
             .filter(p => !p.isDead);
 
@@ -121,27 +122,18 @@ class GameServer {
     }
 
     endGame(winner) {
-        this.gameState.gameStatus = 'ended'; // todo: replace this with a way to reset the server side to blank 
+        this.gameState.gameStatus = 'ended';
         this.stopGameLoop();
 
-        // Calculate final statistics
-        const gameStats = Array.from(this.gameState.players.entries()).map(([id, player]) => ({
-            id,
-            name: player.name,
-            kills: player.killCount,
-            powerUps: player.powerUpsCollected,
-            bombsPlaced: player.bombsPlaced,
-            isWinner: winner && winner.id === id
-        }));
-
-        // Broadcast game over
+        // Broadcast game over with winner stats
         this.broadcast('gameOver', {
-            winner: winner ? {
-                id: winner.id,
-                name: winner.name
-            } : null,
-            stats: gameStats,
-            timestamp: Date.now()
+            winnerId: winner?.id,
+            winnerName: winner?.nickname,
+            stats: {
+                kills: winner?.killCount || 0,
+                powerUps: winner?.powerUpsCollected || 0,
+                bombsPlaced: winner?.bombsPlaced || 0
+            }
         });
     }
 
@@ -170,35 +162,12 @@ class GameServer {
         
         const cell = this.gameState.grid[playerY][playerX];
         if (cell && cell.type === 'powerup' && cell.powerUp) {
-            console.log('Player collecting power-up:', cell.powerUp);
-
-            switch (cell.powerUp) {
-                case 'bomb':
-                    player.maxBombs = Math.min(player.maxBombs + 1, 8);
-                    break;
-                case 'flame':
-                    player.flameRange = Math.min(player.flameRange + 1, 8);
-                    break;
-                case 'speed':
-                    player.speed = Math.min(player.speed + 0.5, 10);
-                    break;
-            }
-            
-            // Broadcast power-up collection
-            this.broadcast('powerUpCollected', {
+            // Instead of handling power-up collection here, trigger the dedicated handler
+            this.handlePowerUpCollected({
                 playerId,
                 position: { x: playerX, y: playerY },
-                type: cell.powerUp, 
-                stats: {
-                    maxBombs: player.maxBombs,
-                    flameRange: player.flameRange,
-                    speed: player.speed
-                }
+                type: cell.powerUp
             });
-            
-            // Clear the cell
-            cell.type = 'empty';
-            cell.powerUp = null;
         }
 
         // Broadcast movement
@@ -279,12 +248,39 @@ class GameServer {
             this.gameState.players.forEach((player, playerId) => {
                 if (!player.isDead && Math.round(player.position.x) === pos.x && Math.round(player.position.y) === pos.y) {
                     affectedPlayers.add(playerId);
+                    
+                    // Make sure lives is a number
+                    player.lives = player.lives || 3;  // Fallback if lives is undefined
                     player.lives--;
-                    player.position = player.spawnPosition
+                    player.position = player.spawnPosition;
+                    
+                    console.log(`Player ${playerId} hit, lives remaining: ${player.lives}`);
+                    
                     if (player.lives <= 0) {
                         player.isDead = true;
                         if (bomb.playerId !== playerId) {
                             bomber.killCount++;
+                        }
+                        
+                        // Broadcast player death immediately
+                        this.broadcast('playerDeath', {
+                            playerId,
+                            position: player.position
+                        });
+                        
+                        // Check for game over
+                        const alivePlayers = Array.from(this.gameState.players.values())
+                            .filter(p => !p.isDead);
+                        
+                        console.log(`Alive players remaining: ${alivePlayers.length}`);
+                        
+                        if (alivePlayers.length === 1) {
+                            const winner = alivePlayers[0];
+                            console.log(`Game Over - Winner: ${winner.nickname}`);
+                            this.endGame(winner);
+                        } else if (alivePlayers.length === 0) {
+                            console.log('Game Over - No winners');
+                            this.endGame(null);
                         }
                     }
                 }
@@ -476,7 +472,18 @@ class GameServer {
             id: sessionId,
             nickname,
             ready: false,
-            votedLevel: null
+            votedLevel: null,
+            lives: 3,
+            isDead: false,
+            killCount: 0,
+            bombsPlaced: 0,
+            activeBombs: 0,
+            powerUpsCollected: 0,
+            maxBombs: 1,
+            flameRange: 1,
+            speed: 4,
+            position: null,
+            spawnPosition: null
         };
 
         if (this.gameState.players.size >= 4) {
@@ -522,7 +529,7 @@ class GameServer {
         this.updateTimers();
     }
 
-    handlePlayerDisconnect(ws) { // continueworkhere
+    handlePlayerDisconnect(ws) {
         const playerId = ws.playerId;
         if (!playerId) return;
 
@@ -534,6 +541,21 @@ class GameServer {
                 playerId: playerId,
                 playerCount: this.gameState.players.size
             });
+
+            // Check if game should end due to disconnection
+            if (this.gameState.gameStatus === 'running') {
+                const alivePlayers = Array.from(this.gameState.players.values())
+                    .filter(p => !p.isDead);
+
+                if (alivePlayers.length === 1) {
+                    // Last player standing wins
+                    const winner = alivePlayers[0];
+                    this.endGame(winner);
+                } else if (alivePlayers.length === 0) {
+                    // No players left, end game with no winner
+                    this.endGame(null);
+                }
+            }
         }
     }
 
@@ -836,9 +858,84 @@ class GameServer {
             }
         } else {
             // Less than 2 ready players
-            this.gameState.gameStatus = "waiting";
-            this.broadcastTimers()
+            this.broadcast('timerUpdate', {
+                waitingTimer: null,
+                startTimer: null,
+                readyPlayerCount
+            });
         }
+    }
+
+    handleChatMessage(data) {
+        const { message, playerName, timestamp } = data;
+        
+        // Debug log
+        console.log('Received chat message:', data);
+        
+        // Validate message
+        if (!message || !playerName) {
+            console.error('Invalid chat message data:', data);
+            return;
+        }
+
+        const chatMessage = {
+            playerName,
+            message: message.slice(0, 200),
+            timestamp: timestamp || new Date().toISOString()
+        };
+
+        this.chatMessages.push(chatMessage);
+        if (this.chatMessages.length > 100) {
+            this.chatMessages.shift();
+        }
+
+        // Broadcast to everyone including sender
+        this.broadcast('chatMessage', chatMessage);
+    }
+
+    //handle powerups collection on server side to prevent cheating
+    handlePowerUpCollected(data) {
+        const { playerId, position, type } = data;
+        const player = this.gameState.players.get(playerId);
+        
+        if (!player) return;
+
+        // Validate the power-up exists at this position
+        const cell = this.gameState.grid[position.y][position.x];
+        if (!cell || cell.type !== 'powerup' || cell.powerUp !== type) {
+            return; // Invalid collection attempt
+        }
+
+        // Update player stats
+        player.powerUpsCollected++;
+        switch (type) {
+            case 'bomb':
+                player.maxBombs = Math.min(player.maxBombs + 1, 8);
+                break;
+            case 'flame':
+                player.flameRange = Math.min(player.flameRange + 1, 8);
+                break;
+            case 'speed':
+                player.speed = Math.min(player.speed + 0.5, 10);
+                break;
+        }
+
+        // Clear the power-up
+        cell.type = 'empty';
+        cell.powerUp = null;
+
+        // Broadcast the validated collection
+        this.broadcast('powerUpCollected', {
+            playerId,
+            position,
+            type,
+            stats: {
+                maxBombs: player.maxBombs,
+                flameRange: player.flameRange,
+                speed: player.speed,
+                powerUpsCollected: player.powerUpsCollected
+            }
+        });
     }
 }
 

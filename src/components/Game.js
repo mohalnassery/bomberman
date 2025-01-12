@@ -23,14 +23,15 @@ export class Game extends Component {
         this.interpolationDelay = 100;
         this.hasInitializedPanels = false;
 
-        // Bind event handlers
+        // Bind all event handlers
         this.handleGameState = this.handleGameState.bind(this);
         this.handlePlayerLeave = this.handlePlayerLeave.bind(this);
         this.handlePlayerMove = this.handlePlayerMove.bind(this);
         this.handleBombPlaced = this.handleBombPlaced.bind(this);
         this.handleBombExplosion = this.handleBombExplosion.bind(this);
         this.handleGameOver = this.handleGameOver.bind(this);
-        this.handlePowerUpCollected = this.handlePowerUpCollected.bind(this)
+        this.handlePowerUpCollected = this.handlePowerUpCollected.bind(this);
+        this.handlePlayerDeath = this.handlePlayerDeath.bind(this);
 
         this.setupWebSocket();
         webSocket.connect();
@@ -136,38 +137,41 @@ export class Game extends Component {
     // removed checkGameOver because that is server side
 
     showGameOverScreen() {
+        console.log('Showing game over screen'); // Debug log
         const overlay = document.createElement('div');
         overlay.className = 'game-over-overlay';
 
         const content = document.createElement('div');
         content.className = 'game-over-content';
 
+        const isWinner = this.winner.id === this.localPlayerId;
+        
         const title = document.createElement('h1');
-        title.textContent = this.winner.id === this.localPlayerId ? 'Victory!' : 'Game Over';
-        title.className = this.winner.id === this.localPlayerId ? 'victory-title' : 'defeat-title';
+        title.textContent = isWinner ? 'Victory!' : 'Game Over';
+        title.className = isWinner ? 'victory-title' : 'defeat-title';
 
         const message = document.createElement('p');
-        message.textContent = `${this.winner.name} wins the game!`;
+        message.textContent = this.winner.id ? 
+            `${this.winner.name} wins the game!` : 
+            'Game Over - No winners!';
 
         const stats = document.createElement('div');
         stats.className = 'game-stats';
-        // Add any relevant game stats here
+        if (this.winner.stats) {
+            stats.innerHTML = `
+                <p>Kills: ${this.winner.stats.kills}</p>
+                <p>Power-ups Collected: ${this.winner.stats.powerUps}</p>
+                <p>Bombs Placed: ${this.winner.stats.bombsPlaced}</p>
+            `;
+        }
 
         const buttons = document.createElement('div');
         buttons.className = 'game-over-buttons';
 
-        const playAgainBtn = document.createElement('button');
-        playAgainBtn.textContent = 'Play Again';
-        playAgainBtn.onclick = () => window.location.reload();
-
         const lobbyBtn = document.createElement('button');
         lobbyBtn.textContent = 'Back to Lobby';
-        lobbyBtn.onclick = () => {
-            webSocket.send('returnToLobby');
-            window.location.href = '/lobby.html';
-        };
-
-        buttons.appendChild(playAgainBtn);
+        lobbyBtn.onclick = () => window.location.href = '/';
+        
         buttons.appendChild(lobbyBtn);
 
         content.appendChild(title);
@@ -202,6 +206,7 @@ export class Game extends Component {
         webSocket.on('bombPlaced',this.handleBombPlaced);
         webSocket.on('bombExplosion',this.handleBombExplosion);
         webSocket.on('powerUpCollected',this.handlePowerUpCollected);
+        webSocket.on('playerDeath', this.handlePlayerDeath);
         // Add chat message handler
         webSocket.on('chatMessage', (data) => {
             if (this.chat) {
@@ -275,7 +280,24 @@ export class Game extends Component {
 
     handlePlayerLeave(data) {
         const { playerId } = data;
-        this.players.delete(playerId);
+        const player = this.players.get(playerId);
+        if (player) {
+            // Remove player from grid
+            const playerCell = document.querySelector(`.player-${playerId}`);
+            if (playerCell) {
+                const playerChar = playerCell.querySelector('.player-character');
+                const playerTag = playerCell.querySelector('.player-tag');
+                if (playerChar) playerChar.remove();
+                if (playerTag) playerTag.remove();
+                playerCell.classList.remove(`player-${playerId}`);
+            }
+            
+            // Clean up player
+            player.destroy();
+            this.players.delete(playerId);
+            
+            console.log(`Player ${playerId} left the game`);
+        }
     }
 
     handlePlayerMove(data) {
@@ -346,41 +368,77 @@ export class Game extends Component {
     }
 
     handlePowerUpCollected(data) {
-        const { playerId, position, type } = data;
+        const { playerId, position, type, stats } = data;
         console.log('Power-up collected:', data);
         
         const player = this.players.get(playerId);
         if (!player) return;
 
+        // Update player stats
+        if (stats) {
+            player.maxBombs = stats.maxBombs;
+            player.flameRange = stats.flameRange;
+            player.speed = stats.speed;
+            player.powerUpsCollected = stats.powerUpsCollected;
+        }
+
         // Get power-up from map and collect it
         const mapCell = this.map.grid[position.y][position.x];
         if (mapCell && mapCell.powerUp) {
-            console.log("here", playerId, this.localPlayerId, playerId === this.localPlayerId)
             mapCell.powerUp.collect(player);
         }
+
+        console.log(`Player ${playerId} has collected ${player.powerUpsCollected} power-ups`);
     }
 
     handlePlayerDeath(data) {
+        console.log('Player death event received:', data);
         const { playerId, position } = data;
         const player = this.players.get(playerId);
 
         if (player) {
-            player.die(position);
+            player.isDead = true;
+            player.updatePosition(position);
+            console.log(`Player ${playerId} died`);
+
+            // Remove player from their current cell
+            const playerCell = document.querySelector(`.player-${playerId}`);
+            if (playerCell) {
+                const playerChar = playerCell.querySelector('.player-character');
+                const playerTag = playerCell.querySelector('.player-tag');
+                if (playerChar) playerChar.remove();
+                if (playerTag) playerTag.remove();
+                playerCell.classList.remove(`player-${playerId}`);
+            }
+
             // Enter spectator mode if local player died
             if (playerId === this.localPlayerId) {
+                console.log('Local player died, entering spectator mode');
                 this.enterSpectatorMode();
             }
         }
     }
 
     handleGameOver(data) {
-        const { winnerId, winnerName } = data;
+        console.log('Game over event received:', data);
+        const { winnerId, winnerName, stats } = data;
         this.isGameOver = true;
+        this.isRunning = false;
+
+        // Get final stats from the winning player
+        const winner = this.players.get(winnerId);
         this.winner = {
             id: winnerId,
-            name: winnerName
+            name: winnerName,
+            stats: {
+                kills: stats?.kills || 0,
+                powerUps: stats?.powerUps || 0,  // Use stats from server
+                bombsPlaced: stats?.bombsPlaced || 0
+            }
         };
-        this.showGameOverScreen();
+
+        // Show game over screen immediately
+        setTimeout(() => this.showGameOverScreen(), 1000);
     }
 
     handleError(error) {
@@ -391,13 +449,16 @@ export class Game extends Component {
     // -- SPECTATOR MODE --
 
     enterSpectatorMode() {
+        console.log('Entering spectator mode');
         this.spectatorMode = true;
+        
+        // Disable controls for dead player
+        const localPlayer = this.players.get(this.localPlayerId);
+        if (localPlayer) {
+            localPlayer.disableControls();
+        }
 
-        // Disable controls
-        const localPlayer = this.players.get(this.localPlayerId)
-        localPlayer.disableControls();
-
-        // Add spectator UI
+        // Create and add spectator overlay
         const spectatorUI = document.createElement('div');
         spectatorUI.className = 'spectator-overlay';
         spectatorUI.innerHTML = `
@@ -406,10 +467,10 @@ export class Game extends Component {
                 <p>Spectating remaining players...</p>
             </div>
         `;
-        this.element.appendChild(spectatorUI);
 
-        // Enable spectator camera controls
-        this.initSpectatorControls();
+        // Add to document body
+        document.body.appendChild(spectatorUI);
+        console.log('Spectator UI added');
     }
 
     initSpectatorControls() {
@@ -512,6 +573,16 @@ export class Game extends Component {
             // Add event listener for leave game button
             document.getElementById('leaveGameBtn').addEventListener('click', () => {
                 if (confirm('Are you sure you want to leave the game?')) {
+                    // Notify server that player is leaving
+                    webSocket.send('playerLeave', {
+                        playerId: this.localPlayerId
+                    });
+
+                    // Use existing handler to clean up player
+                    this.handlePlayerLeave({ playerId: this.localPlayerId });
+
+                    // Disconnect and redirect
+                    webSocket.disconnect();
                     window.location.href = '/';
                 }
             });
@@ -523,8 +594,9 @@ export class Game extends Component {
         const mapContainer = document.querySelector('.map-container');
         if (mapContainer && this.isRunning) {
             this.map.render();
+            // Only render alive players
             this.players.forEach(player => {
-                if (!player.isDead || this.spectatorMode) {
+                if (!player.isDead) {
                     player.render();
                 }
             });

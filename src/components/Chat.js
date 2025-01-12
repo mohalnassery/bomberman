@@ -10,7 +10,6 @@ function purifyText(text) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;')
-        // Optional: Remove any control characters and non-printable characters
         .replace(/[\x00-\x1F\x7F-\x9F]/g, '');
 }
 
