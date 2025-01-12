@@ -22,6 +22,7 @@ export class Lobby extends Component {
         this.isJoined = false;
         this.playerId = null;
         this.nickname = '';
+        this.errorMessage = '';
         
         // Check for existing session
         const playerSession = localStorage.getItem('playerSession');
@@ -152,19 +153,6 @@ export class Lobby extends Component {
                 sessionId: this.playerId
             });
 
-            this.isJoined = true;
-            
-            const state = this.store.getState();
-            this.store.setState({
-                ...state,
-                players: [...state.players, {
-                    id: this.playerId,
-                    nickname: this.nickname,
-                    ready: false
-                }]
-            });
-
-            this.render();
         } catch (error) {
             console.error('Failed to join game:', error);
             alert('Failed to join game. Please try again.');
@@ -235,19 +223,31 @@ export class Lobby extends Component {
         const { player, playerCount } = data;
         const state = this.store.getState();
         
+        
         if (!state.players.find(p => p.nickname === player.nickname)) {
             this.store.setState({
                 ...state,
                 players: [...state.players, player],
                 playerCount: playerCount
             });
-            this.render();
+        } else {
+            console.log("sacre belu two", player.nickname, this.nickname)
         }
+        
+        if (player.nickname === this.nickname) {
+            this.isJoined = true
+            this.errorMessage = ''
+        } else {
+            console.log("sacre belu", player.nickname, this.nickname)
+        }
+
+        this.render();
     }
 
-    handlePlayerDenied() {
+    handlePlayerDenied(data) {
         this.isJoined = false;
-        window.location.hash = '/denied'; // for now should just take to 404, revisit
+        this.errorMessage = data.message;
+        this.render();
     }
 
     handlePlayerLeft(data) {
@@ -627,6 +627,7 @@ export class Lobby extends Component {
                     <input type="text" id="nickname" placeholder="Enter your nickname" 
                            value="${this.nickname}">
                     <button id="joinBtn">Join Game</button>
+                    ${this.errorMessage !== '' ? `<div class="error-message">${this.errorMessage}</div>` : ``}
                 </div>`;
         }
         // Show game controls if joined

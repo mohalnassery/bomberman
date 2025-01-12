@@ -468,6 +468,28 @@ class GameServer {
         const { nickname, sessionId } = data;
         ws.playerId = sessionId;
 
+        if (Array.from(this.gameState.players.values()).some((p) => p.nickname === nickname)) {
+            ws.send(JSON.stringify({
+                type: 'playerDenied',
+                payload: { message: "Nickname Already in use" }
+            }));
+            return;
+        }
+        if (this.gameState.players.size >= 4) {
+            ws.send(JSON.stringify({
+                type: 'playerDenied',
+                payload: { message: "Room Full" }
+            }));
+            return;
+        }
+        if (this.gameState.gameStatus !== "waiting") {
+            ws.send(JSON.stringify({
+                type: 'playerDenied',
+                payload: { message: "Game is already " + this.gameState.gameStatus }
+            }));
+            return;
+        }
+
         const player = {
             id: sessionId,
             nickname,
@@ -485,21 +507,6 @@ class GameServer {
             position: null,
             spawnPosition: null
         };
-
-        if (this.gameState.players.size >= 4) {
-            ws.send(JSON.stringify({
-                type: 'playerDenied',
-                payload: { message: "Room Full" }
-            }));
-            return;
-        }
-        if (this.gameState.gameStatus !== "waiting") {
-            ws.send(JSON.stringify({
-                type: 'playerDenied',
-                payload: { message: "Game is already " + this.gameState.gameStatus }
-            }));
-            return;
-        }
 
         // Add new player to game state
         this.gameState.players.set(sessionId, player);
@@ -861,7 +868,7 @@ class GameServer {
             this.broadcast('timerUpdate', {
                 waitingTimer: null,
                 startTimer: null,
-                readyPlayerCount
+                readyPlayerCount: this.gameState.readyCount
             });
         }
     }
