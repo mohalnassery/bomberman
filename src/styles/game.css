@@ -22,15 +22,38 @@
     background-color: #444;
 }
 
+.cell.power-up.power-up-bomb {
+    background: url('./image/bomb.png') center/contain no-repeat;
+    background-size: 80%;
+}
+
+.cell.power-up.power-up-flame {
+    background: url('./image/flame.png') center/contain no-repeat;
+    background-size: 90%;
+}
+
+.cell.power-up.power-up-speed {
+    background: url('./image/speed.png') center/contain no-repeat;
+    background-size: 90%;
+}
 
 .cell.wall {
     background-color: #666;
     border: 2px solid #333;
+    z-index: 10;  /* Same as blocks */
+    box-sizing: border-box;
 }
 
 .cell.block {
     background-color: #38813a;
     border: 1px solid #555;
+}
+
+.cell.block.power-up,
+.cell.block.power-up-bomb,
+.cell.block.power-up-flame,
+.cell.block.power-up-speed {
+    background: #38813a;
 }
 
 .player-character {
@@ -101,15 +124,16 @@
     color: #ff4444;
 }
 
-.cell.bomb {
-    background-color: #000;
-    border-radius: 50%;
-    animation: pulse 1s infinite;
-}
-
 .cell.explosion {
-    background-color: #e74c3c;
-    animation: explode 0.5s ease-out;
+    background: radial-gradient(
+        circle at center,
+        rgba(255, 200, 0, 0.9) 0%,
+        rgba(255, 100, 0, 0.8) 40%,
+        rgba(255, 0, 0, 0.6) 65%,
+        rgba(255, 0, 0, 0) 100%
+    );
+    box-shadow: 0 0 20px rgba(255, 100, 0, 0.6);
+    animation: explosionAnim 0.5s ease-out;
 }
 
 /* .cell.powerup {
@@ -123,10 +147,75 @@
     100% { transform: scale(1); }
 }
 
-@keyframes explode {
-    0% { transform: scale(1); opacity: 1; }
-    100% { transform: scale(1.5); opacity: 0; }
+@keyframes explosionAnim {
+    0% { 
+        opacity: 0;
+        transform: scale(0.1);
+        background: radial-gradient(
+            circle at center,
+            rgba(255, 255, 255, 0.9) 0%,
+            rgba(255, 200, 0, 0.8) 30%,
+            rgba(255, 100, 0, 0.6) 60%,
+            rgba(255, 0, 0, 0) 100%
+        );
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.2);
+        background: radial-gradient(
+            circle at center,
+            rgba(255, 200, 0, 0.9) 0%,
+            rgba(255, 100, 0, 0.8) 40%,
+            rgba(255, 0, 0, 0.6) 65%,
+            rgba(255, 0, 0, 0) 100%
+        );
+    }
+    100% { 
+        opacity: 0;
+        transform: scale(1.5);
+        background: radial-gradient(
+            circle at center,
+            rgba(255, 100, 0, 0.6) 0%,
+            rgba(255, 0, 0, 0.4) 40%,
+            rgba(255, 0, 0, 0.2) 65%,
+            rgba(255, 0, 0, 0) 100%
+        );
+    }
 }
+
+/* Add a glow effect for more impact */
+.cell.explosion::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(
+        circle at center,
+        rgba(255, 200, 0, 0.4) 0%,
+        rgba(255, 100, 0, 0.2) 40%,
+        transparent 70%
+    );
+    animation: glowPulse 0.5s ease-out;
+}
+
+@keyframes glowPulse {
+    0% {
+        opacity: 0;
+        transform: scale(0.1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.5);
+    }
+}
+
+
 
 
 /* Game Container and Camera */
@@ -227,7 +316,6 @@
 }
 
 .power-up-icon {
-    font-size: 24px;
     width: 40px;
     height: 40px;
     display: flex;
@@ -235,6 +323,22 @@
     justify-content: center;
     background: rgba(0, 0, 0, 0.2);
     border-radius: 50%;
+    background-size: 80%;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.power-up-icon.bomb {
+    background-image: url('./image/bomb.png');
+    background-size: 70%;
+}
+
+.power-up-icon.flame {
+    background-image: url('./image/flame.png');
+}
+
+.power-up-icon.speed {
+    background-image: url('./image/speed.png');
 }
 
 .power-up-count {
@@ -514,3 +618,35 @@
         transform: translate(-50%, 0);
     }
 }
+
+/* Add these animation definitions */
+@keyframes bombPulse {
+    0% { transform: scale(0.8); }
+    50% { transform: scale(1); }
+    100% { transform: scale(0.8); }
+}
+
+@keyframes explosionAnim {
+    0% { 
+        opacity: 1;
+        transform: scale(0.5);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.2);
+    }
+    100% { 
+        opacity: 0;
+        transform: scale(1.5);
+    }
+}
+
+/* Update the bomb cell styling */
+.cell.bomb {
+    background-image: url('./image/bomb.png');
+    background-size: 80%;
+    background-repeat: no-repeat;
+    background-position: center;
+    animation: bombPulse 0.8s infinite;
+}
+

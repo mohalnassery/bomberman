@@ -341,30 +341,30 @@ export class Game extends Component {
         // Remove the bomb & blocks and add the explosion effect
         this.map.explodeBomb(bombId, destroyedBlocks, affectedPositions);
 
-        powerUpsSpawned.forEach((powerUpData) => {
-            const { type, position } = powerUpData;
-            
-            // Create and spawn power-up using PowerUp class
-            const powerUp = new PowerUp(type, position, this.map);
-            powerUp.spawn();
-            
-            // Store power-up reference in map
-            this.map.grid[position.y][position.x].powerUp = powerUp;
-            
-            console.log('Power-up spawned:', powerUp);
-        })
+        // Add slight delay for power-ups to appear after explosion animation
+        setTimeout(() => {
+            powerUpsSpawned.forEach((powerUpData) => {
+                const { type, position } = powerUpData;
+                const powerUp = new PowerUp(type, position, this.map);
+                powerUp.spawn();
+                this.map.grid[position.y][position.x].powerUp = powerUp;
+                console.log('Power-up spawned:', powerUp);
+            });
+        }, 500); // Wait for explosion animation to complete
 
-        // Handle affected players
-        affectedPlayers.forEach((playerId, index) => {
-            const player = this.players.get(playerId);
-            if (player) {
-                player.takeDamage();
-                if (player.lives <= 0 && playerId === this.localPlayerId) {
-                    this.enterSpectatorMode();
+        // Handle affected players with slight delay
+        setTimeout(() => {
+            affectedPlayers.forEach((playerId, index) => {
+                const player = this.players.get(playerId);
+                if (player) {
+                    player.takeDamage();
+                    if (player.lives <= 0 && playerId === this.localPlayerId) {
+                        this.enterSpectatorMode();
+                    }
+                    player.position = player.spawnPosition || this.map.getPlayerStartPosition(index) || player.position
                 }
-                player.position = player.spawnPosition || this.map.getPlayerStartPosition(index) || player.position
-            }
-        });
+            });
+        }, 250); // Apply damage during explosion animation
     }
 
     handlePowerUpCollected(data) {
@@ -532,15 +532,15 @@ export class Game extends Component {
                         <span class="stats-label">Power-Ups:</span>
                         <div class="power-ups-list">
                             <div class="power-up-item">
-                                <span class="power-up-icon bomb">🎆</span>
+                                <span class="power-up-icon bomb"></span>
                                 <span class="power-up-count bomb">${Math.floor(player.maxBombs - player.initialPowers.maxBombs) || 0}</span>
                             </div>
                             <div class="power-up-item">
-                                <span class="power-up-icon flame">🔥</span>
+                                <span class="power-up-icon flame"></span>
                                 <span class="power-up-count flame">${Math.floor(player.flameRange - player.initialPowers.flameRange) || 0}</span>
                             </div>
                             <div class="power-up-item">
-                                <span class="power-up-icon speed">⚡</span>
+                                <span class="power-up-icon speed"></span>
                                 <span class="power-up-count speed">${Math.floor(player.speed-player.initialPowers.speed) || 0}</span>
                             </div>
                         </div>

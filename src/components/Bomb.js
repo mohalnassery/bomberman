@@ -77,10 +77,14 @@ export class Bomb {
             const [x, y] = cellCoord.split(',').map(Number);
             const cell = $(`.cell[data-x="${x}"][data-y="${y}"]`);
             if (cell) {
+                cell.classList.remove('bomb');
+                cell.style.animation = '';
+                
                 cell.classList.add('explosion');
+                
                 setTimeout(() => {
                     cell.classList.remove('explosion');
-                }, 1000);
+                }, 500);
             }
         });
     }
@@ -95,6 +99,7 @@ export class Bomb {
         const cell = $(`.cell[data-x="${this.position.x}"][data-y="${this.position.y}"]`);
         if (cell) {
             cell.classList.remove('bomb');
+            cell.style.animation = '';
         }
     }
 
@@ -128,6 +133,7 @@ export class Bomb {
         const cell = $(`.cell[data-x="${this.position.x}"][data-y="${this.position.y}"]`);
         if (cell) {
             cell.classList.add('bomb');
+            cell.style.animation = 'bombPulse 0.8s infinite';
         }
     }
 }

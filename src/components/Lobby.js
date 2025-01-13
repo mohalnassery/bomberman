@@ -8,6 +8,7 @@ export class Lobby extends Component {
         this.store = new Store({ 
             players: [], 
             playerCount: 0,
+            readyCount: 0,
             gameStarting: false,
             selectedLevel: null,
             gameSettings: {
@@ -282,7 +283,7 @@ export class Lobby extends Component {
         this.store.setState({
             ...state,
             players,
-            readyCount // Store the server's ready count
+            readyCount: readyCount || players.filter(p => p.ready).length // Fallback to calculated count
         });
 
         this.render();
@@ -392,6 +393,7 @@ export class Lobby extends Component {
             levelVotes: data.levelVotes || {},
             selectedLevel: data.selectedLevel,
             playerCount: data.playerCount,
+            readyCount: data.readyCount || data.players.filter(p => p.ready).length, // Add readyCount with fallback
             waitingTimer: data.waitingTimer,
             startTimer: data.startTimer
         });
