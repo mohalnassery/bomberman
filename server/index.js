@@ -135,6 +135,29 @@ class GameServer {
                 bombsPlaced: winner?.bombsPlaced || 0
             }
         });
+
+        // Reset game state for next game
+        setTimeout(() => {
+            this.gameState = {
+                players: new Map(),
+                readyCount: 0,
+                bombs: new Map(),
+                selectedLevel: null,
+                gameStatus: 'waiting',
+                lastUpdateTime: Date.now(),
+                grid: []
+            };
+            
+            // Reset all timers
+            this.clearTimers();
+            
+            // Broadcast the reset state
+            this.broadcast('gameState', {
+                gameStatus: 'waiting',
+                players: [],
+                readyCount: 0
+            });
+        }, 3000); // Give time for game over screen to be shown
     }
 
     // -- GAME ACTION HANDLERS --

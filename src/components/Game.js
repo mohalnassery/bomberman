@@ -222,7 +222,12 @@ export class Game extends Component {
         console.log('Received game state:', data);
         if (data.gameStatus !== "running") {
             this.isRunning = false;
-            window.location.hash = '/';
+            if (data.gameStatus === 'waiting') {
+                // Clean up game resources
+                this.destroy();
+                // Redirect to lobby after cleanup
+                window.location.href = '/';
+            }
             return;
         }
 
