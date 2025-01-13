@@ -207,6 +207,7 @@ export class Game extends Component {
         webSocket.on('bombExplosion',this.handleBombExplosion);
         webSocket.on('powerUpCollected',this.handlePowerUpCollected);
         webSocket.on('playerDeath', this.handlePlayerDeath);
+        webSocket.on('playerRespawn', this.handlePlayerRespawn.bind(this));
         // Add chat message handler
         webSocket.on('chatMessage', (data) => {
             if (this.chat) {
@@ -333,38 +334,55 @@ export class Game extends Component {
             bomberId,
             timestamp
         } = data;
-        console.log("explosion data: ", data)
 
-        const bomber = this.players.get(bomberId)
+        const bomber = this.players.get(bomberId);
         bomber.activeBombs--; 
 
         // Remove the bomb & blocks and add the explosion effect
         this.map.explodeBomb(bombId, destroyedBlocks, affectedPositions);
 
-        // Add slight delay for power-ups to appear after explosion animation
+        // Handle affected players immediately to remove them from grid
+        affectedPlayers.forEach((playerId, index) => {
+            const player = this.players.get(playerId);
+            if (player) {
+                // Remove player from grid immediately
+                const playerCell = document.querySelector(`.player-${playerId}`);
+                if (playerCell) {
+                    const playerChar = playerCell.querySelector('.player-character');
+                    const playerTag = playerCell.querySelector('.player-tag');
+                    if (playerChar) playerChar.remove();
+                    if (playerTag) playerTag.remove();
+                    playerCell.classList.remove(`player-${playerId}`);
+                }
+                
+                player.takeDamage();
+                if (player.lives <= 0 && playerId === this.localPlayerId) {
+                    this.enterSpectatorMode();
+                }
+            }
+        });
+
+        // Handle power-ups after explosion animation
         setTimeout(() => {
             powerUpsSpawned.forEach((powerUpData) => {
                 const { type, position } = powerUpData;
                 const powerUp = new PowerUp(type, position, this.map);
                 powerUp.spawn();
                 this.map.grid[position.y][position.x].powerUp = powerUp;
-                console.log('Power-up spawned:', powerUp);
             });
-        }, 500); // Wait for explosion animation to complete
+        }, 500);
 
-        // Handle affected players with slight delay
+        // Respawn players only after explosion effect is complete
         setTimeout(() => {
             affectedPlayers.forEach((playerId, index) => {
                 const player = this.players.get(playerId);
-                if (player) {
-                    player.takeDamage();
-                    if (player.lives <= 0 && playerId === this.localPlayerId) {
-                        this.enterSpectatorMode();
-                    }
-                    player.position = player.spawnPosition || this.map.getPlayerStartPosition(index) || player.position
+                if (player && player.lives > 0) {
+                    player.position = player.spawnPosition || this.map.getPlayerStartPosition(index) || player.position;
+                    player.updatePosition(player.position);
+                    player.render(); // Re-render player at spawn position
                 }
             });
-        }, 250); // Apply damage during explosion animation
+        }, 600); // Wait slightly longer than explosion animation
     }
 
     handlePowerUpCollected(data) {
@@ -610,5 +628,15 @@ export class Game extends Component {
         }
         webSocket.disconnect();
         super.destroy();
+    }
+
+    handlePlayerRespawn(data) {
+        const { playerId, position, playerNumber } = data;
+        const player = this.players.get(playerId);
+        if (player) {
+            console.log(`Respawning player ${playerId} to position:`, position);
+            player.position = position;
+            player.updatePosition(position);
+        }
     }
 }

@@ -51,6 +51,13 @@ export class Player {
         this.updateThrottleMs = 50; // Send updates every 50ms
         this.interpolationFactor = 0.2; // Adjust for smoother movement
 
+        // Store spawn position separately
+        this.spawnPosition = props.spawnPosition || props.position;
+        this.position = { ...this.spawnPosition }; // Make a copy to avoid reference issues
+        
+        console.log(`Player ${this.id} (${this.name}) initialized at position:`, this.position, 
+                    'with spawn position:', this.spawnPosition);
+
         this.createPlayerElement();
 
         // Initialize movement properties
@@ -277,10 +284,19 @@ export class Player {
     }
 
     updatePosition(position) {
-        this.position = position;
-        this.element.style.transform =
-            `translate(${position.x * 40}px, ${position.y * 40}px)`;
-        //console.log(`Updated position for player ${this.id} to:`, position);
+        if (!position) return;
+        
+        // Make a copy of the position to avoid reference issues
+        this.position = {
+            x: position.x,
+            y: position.y
+        };
+        
+        if (this.element) {
+            this.element.style.transform = 
+                `translate(${this.position.x * 40}px, ${this.position.y * 40}px)`;
+            console.log(`Updated position for player ${this.id} to:`, this.position);
+        }
     }
 
     incrementScore(points = 1) {
@@ -337,6 +353,12 @@ export class Player {
                     cell.appendChild(playerTag);
                 }
             }
+        }
+
+        // Update the cell position attributes
+        if (this.element) {
+            this.element.dataset.x = cellPosition.x;
+            this.element.dataset.y = cellPosition.y;
         }
     }
 }

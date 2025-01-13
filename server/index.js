@@ -250,9 +250,25 @@ class GameServer {
                     affectedPlayers.add(playerId);
                     
                     // Make sure lives is a number
-                    player.lives = player.lives || 3;  // Fallback if lives is undefined
+                    player.lives = player.lives || 3;
                     player.lives--;
-                    player.position = player.spawnPosition;
+                    
+                    if (player.spawnPosition) {
+                        // Create a new object for position to avoid reference issues
+                        player.position = {
+                            x: player.spawnPosition.x,
+                            y: player.spawnPosition.y
+                        };
+                        
+                        // Include player number in respawn event
+                        this.broadcast('playerRespawn', {
+                            playerId,
+                            position: player.position,
+                            playerNumber: player.playerNumber
+                        });
+                        
+                        console.log(`Player ${playerId} (Player ${player.playerNumber}) respawning at position:`, player.position);
+                    }
                     
                     console.log(`Player ${playerId} hit, lives remaining: ${player.lives}`);
                     
