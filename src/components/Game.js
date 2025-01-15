@@ -213,12 +213,6 @@ export class Game extends Component {
         console.log('Received game state:', data);
         if (data.gameStatus !== "running") {
             this.isRunning = false;
-            if (data.gameStatus === 'waiting') {
-                // Clean up game resources
-                this.destroy();
-                // Redirect to lobby after cleanup
-                window.location.href = '/';
-            }
             return;
         }
 
@@ -263,15 +257,13 @@ export class Game extends Component {
                 console.log('Map loaded successfully');
                 // Update player positions after map loads
                 this.render(); // Force render after map loads
-            } else {
-
             }
         }
 
         // Start game loop if not running
         if (data.gameStatus === 'running' && !this.isRunning) {
             this.isRunning = true;
-           this.gameLoop();
+            this.gameLoop();
         }
     }
 
@@ -412,6 +404,7 @@ export class Game extends Component {
 
         if (player) {
             player.isDead = true;
+            player.lives = 0; // Set lives to 0 when player dies
             player.updatePosition(position);
             console.log(`Player ${playerId} died`);
 
@@ -425,8 +418,12 @@ export class Game extends Component {
                 playerCell.classList.remove(`player-${playerId}`);
             }
 
-            // Enter spectator mode if local player died
+            // Update lives display in left panel if it's the local player
             if (playerId === this.localPlayerId) {
+                const livesDisplay = document.querySelector('.stats-value.lives');
+                if (livesDisplay) {
+                    livesDisplay.textContent = '0';
+                }
                 console.log('Local player died, entering spectator mode');
                 this.enterSpectatorMode();
             }
@@ -540,7 +537,7 @@ export class Game extends Component {
                     <h3>Player Stats</h3>
                     <div class="stats-item">
                         <span class="stats-label">Lives:</span>
-                        <span class="stats-value lives">${player.lives || 3}</span>
+                        <span class="stats-value lives">${player.isDead ? 0 : player.lives || 3}</span>
                     </div>
                     <div class="stats-item">
                         <span class="stats-label">Power-Ups:</span>

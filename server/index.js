@@ -297,6 +297,7 @@ class GameServer {
                     
                     if (player.lives <= 0) {
                         player.isDead = true;
+                        player.lives = 0; // Ensure lives is set to 0
                         if (bomb.playerId !== playerId) {
                             bomber.killCount++;
                         }
@@ -304,7 +305,8 @@ class GameServer {
                         // Broadcast player death immediately
                         this.broadcast('playerDeath', {
                             playerId,
-                            position: player.position
+                            position: player.position,
+                            lives: player.lives // Include lives in death broadcast
                         });
                         
                         // Check for game over
