@@ -33,16 +33,31 @@ export class Lobby extends Component {
             const session = JSON.parse(playerSession);
             const info = JSON.parse(playerInfo);
             
-            // Only restore session if it's recent (within last hour)
-            const sessionAge = Date.now() - session.timestamp;
-            if (sessionAge < 3600000) { // 1 hour in milliseconds
-                this.playerId = session.playerId;
-                this.nickname = session.nickname;
-                this.isJoined = true;
-            } else {
-                // Clear expired session
-                localStorage.removeItem('playerSession');
-                localStorage.removeItem('playerInfo');
+            // If there was a previous session in the lobby, send a leave event
+            if (session.currentPage === '#/') {
+                // Connect to websocket first
+                webSocket.connect().then(() => {
+                    // Send leave event for the previous session
+                    webSocket.send('playerLeave', {
+                        playerId: session.playerId,
+                        sessionId: session.playerId
+                    });
+                    
+                    // Clear the session
+                    localStorage.removeItem('playerSession');
+                    localStorage.removeItem('playerInfo');
+                });
+            }
+            
+            // Only restore session if it's for the game page
+            if (session.currentPage === '#/game') {
+                // Only restore session if it's recent (within last hour)
+                const sessionAge = Date.now() - session.timestamp;
+                if (sessionAge < 3600000) { // 1 hour in milliseconds
+                    this.playerId = session.playerId;
+                    this.nickname = session.nickname;
+                    this.isJoined = true;
+                }
             }
         }
         
@@ -219,28 +234,39 @@ export class Lobby extends Component {
     // -- WS HANDLERS: server to client --
 
     handlePlayerJoined(data) {
-        const { player, playerCount } = data;
+        const { player, playerCount, readyCount } = data;
         const state = this.store.getState();
-        
         
         if (!state.players.find(p => p.nickname === player.nickname)) {
             this.store.setState({
                 ...state,
                 players: [...state.players, player],
-                playerCount: playerCount
+                playerCount: playerCount,
+                readyCount: readyCount || state.readyCount || 0  // Keep existing ready count or use server's count
             });
-        } else {
-            console.log("sacre belu two", player.nickname, this.nickname)
         }
         
         if (player.nickname === this.nickname) {
-            this.isJoined = true
-            this.errorMessage = ''
-        } else {
-            console.log("sacre belu", player.nickname, this.nickname)
+            this.isJoined = true;
+            this.errorMessage = '';
         }
 
-        this.render();
+        // Update only the player list display
+        const playerListElement = document.querySelector('.players-container');
+        if (playerListElement) {
+            playerListElement.innerHTML = this.store.getState().players.map(p => `
+                <div class="player-item ${p.ready ? 'ready' : ''}">
+                    <span class="player-name">${p.nickname}</span>
+                    <span class="player-status">${p.ready ? '✓ Ready' : 'Not Ready'}</span>
+                    ${p.nickname === this.nickname ? ' (You)' : ''}
+                </div>
+            `).join('');
+        }
+
+        // Only do a full render if this is the joining player
+        if (player.nickname === this.nickname) {
+            this.render();
+        }
     }
 
     handlePlayerDenied(data) {
@@ -250,62 +276,143 @@ export class Lobby extends Component {
     }
 
     handlePlayerLeft(data) {
-        const { sessionId } = data;
+        const { playerId, playerCount, readyCount } = data;
         const state = this.store.getState();
 
         const newState = {
-            players: state.players.filter(p => p.sessionId !== sessionId),
-            playerCount: state.playerCount - 1
+            players: state.players.filter(p => p.id !== playerId),
+            playerCount: playerCount,
+            readyCount: readyCount
         }
         
         this.store.setState({
             ...this.store.getState(),
             ...newState
         });
-        this.render();
+
+        // Update only the necessary DOM elements
+        const playerListElement = document.querySelector('.players-container');
+        if (playerListElement) {
+            playerListElement.innerHTML = this.store.getState().players.map(p => `
+                <div class="player-item ${p.ready ? 'ready' : ''}">
+                    <span class="player-name">${p.nickname}</span>
+                    <span class="player-status">${p.ready ? '✓ Ready' : 'Not Ready'}</span>
+                    ${p.nickname === this.nickname ? ' (You)' : ''}
+                </div>
+            `).join('');
+        }
+
+        // Update ready count display
+        const readyCountElement = document.querySelector('.player-count');
+        if (readyCountElement) {
+            readyCountElement.textContent = `Ready Players: ${readyCount} / ${state.gameSettings.maxPlayers}`;
+        }
+
+        // Update level votes display
+        this.updateVotesDisplay();
     }
 
     handlePlayerReady(data) {
         const state = this.store.getState();
         const { nickname, ready, readyCount } = data;
 
-        const players = state.players
+        const players = state.players;
         const playerIdx = players.findIndex(p => p.nickname === nickname);
         if (playerIdx === -1) {
-            console.log("something is wrong with handlePlayerReady...")
-        } else {
-            players[playerIdx].ready = ready
+            console.log("something is wrong with handlePlayerReady...");
+            return;
         }
+        
+        players[playerIdx].ready = ready;
 
         // Update store with new state
         this.store.setState({
             ...state,
             players,
-            readyCount: readyCount || players.filter(p => p.ready).length // Fallback to calculated count
+            readyCount: readyCount || players.filter(p => p.ready).length
         });
 
-        this.render();
+        // Update only the affected player's status in the DOM
+        const playerItem = document.querySelector(`.player-item:nth-child(${playerIdx + 1})`);
+        if (playerItem) {
+            playerItem.className = `player-item ${ready ? 'ready' : ''}`;
+            const statusSpan = playerItem.querySelector('.player-status');
+            if (statusSpan) {
+                statusSpan.textContent = ready ? '✓ Ready' : 'Not Ready';
+            }
+        }
+
+        // Update ready count display
+        const readyCountElement = document.querySelector('.player-count');
+        if (readyCountElement) {
+            readyCountElement.textContent = `Ready Players: ${readyCount} / ${state.gameSettings.maxPlayers}`;
+        }
+
+        // Update level buttons state if it's the current player
+        if (nickname === this.nickname) {
+            const levelBtns = document.querySelectorAll('.level-btn');
+            levelBtns.forEach(btn => {
+                btn.disabled = ready;
+            });
+
+            // Update ready button
+            const readyBtn = document.getElementById('readyBtn');
+            if (readyBtn) {
+                readyBtn.textContent = ready ? 'Not Ready' : 'Ready';
+                readyBtn.className = ready ? 'ready' : '';
+            }
+        }
     }
 
     handlePlayerUnready(data) {
         const { nickname, ready, readyCount } = data;
         const state = this.store.getState();
         
-        const updatedPlayers = state.players.map(player => {
-            if (player.nickname === nickname) {
-                return { ...player, ready: ready };
-            }
-            return player;
-        });
+        const players = state.players;
+        const playerIdx = players.findIndex(p => p.nickname === nickname);
+        if (playerIdx === -1) {
+            console.log("something is wrong with handlePlayerUnready...");
+            return;
+        }
+
+        players[playerIdx].ready = ready;
 
         this.store.setState({
             ...state,
-            players: updatedPlayers,
-            readyCount 
+            players,
+            readyCount
         });
 
-        // Update UI
-        this.render();
+        // Update only the affected player's status in the DOM
+        const playerItem = document.querySelector(`.player-item:nth-child(${playerIdx + 1})`);
+        if (playerItem) {
+            playerItem.className = 'player-item';
+            const statusSpan = playerItem.querySelector('.player-status');
+            if (statusSpan) {
+                statusSpan.textContent = 'Not Ready';
+            }
+        }
+
+        // Update ready count display
+        const readyCountElement = document.querySelector('.player-count');
+        if (readyCountElement) {
+            readyCountElement.textContent = `Ready Players: ${readyCount} / ${state.gameSettings.maxPlayers}`;
+        }
+
+        // Update level buttons state if it's the current player
+        if (nickname === this.nickname) {
+            const levelBtns = document.querySelectorAll('.level-btn');
+            levelBtns.forEach(btn => {
+                btn.disabled = false;
+            });
+
+            // Update ready button
+            const readyBtn = document.getElementById('readyBtn');
+            if (readyBtn) {
+                readyBtn.textContent = 'Ready';
+                readyBtn.className = '';
+            }
+        }
     }
 
     handleGameState(data) {
@@ -391,7 +498,7 @@ export class Lobby extends Component {
             levelVotes: data.levelVotes || {},
             selectedLevel: data.selectedLevel,
             playerCount: data.playerCount,
-            readyCount: data.readyCount || data.players.filter(p => p.ready).length, // Add readyCount with fallback
+            readyCount: data.readyCount || data.players.filter(p => p.ready).length, // Use server's ready count
             waitingTimer: data.waitingTimer,
             startTimer: data.startTimer
         });

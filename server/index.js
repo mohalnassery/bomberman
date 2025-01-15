@@ -583,11 +583,19 @@ class GameServer {
 
         const player = this.gameState.players.get(playerId);
         if (player) {
+            // Update ready count if the player was ready
+            if (player.ready) {
+                this.gameState.readyCount = Math.max(0, this.gameState.readyCount - 1);
+            }
+
+            // Remove player from game state
             this.gameState.players.delete(playerId);
 
+            // Broadcast player leave with updated counts
             this.broadcast('playerLeave', {
                 playerId: playerId,
-                playerCount: this.gameState.players.size
+                playerCount: this.gameState.players.size,
+                readyCount: this.gameState.readyCount
             });
 
             // Check if game should end due to disconnection
@@ -604,6 +612,9 @@ class GameServer {
                     this.endGame(null);
                 }
             }
+
+            // Update timers based on new player count
+            this.updateTimers();
         }
     }
 
