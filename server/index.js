@@ -912,7 +912,7 @@ class GameServer {
         }
     }
 
-    handleChatMessage(data) {
+    handleChatMessage(ws, data) {
         const { message, playerName, timestamp } = data;
         
         // Debug log

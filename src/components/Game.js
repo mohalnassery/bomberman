@@ -36,9 +36,6 @@ export class Game extends Component {
         this.setupWebSocket();
         webSocket.connect();
         this.start();
-
-        // Initialize chat
-        this.chat = new Chat(this.nickname);
     }
 
     // -- GAMELOOP FUNCTIONS --
@@ -208,12 +205,6 @@ export class Game extends Component {
         webSocket.on('powerUpCollected',this.handlePowerUpCollected);
         webSocket.on('playerDeath', this.handlePlayerDeath);
         webSocket.on('playerRespawn', this.handlePlayerRespawn.bind(this));
-        // Add chat message handler
-        webSocket.on('chatMessage', (data) => {
-            if (this.chat) {
-                this.chat.receiveMessage(data);
-            }
-        });
         console.log('WebSocket handlers setup complete');
     }
 

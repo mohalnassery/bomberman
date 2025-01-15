@@ -19,6 +19,9 @@ export class Chat {
         this.messages = [];
         this.isMinimized = false;
         this.container = null;
+        
+        // Register WebSocket listener for chat messages
+        webSocket.on('chatMessage', (data) => this.receiveMessage(data));
     }
 
     initialize(container) {
@@ -85,16 +88,19 @@ export class Chat {
             timestamp: new Date().toISOString()
         };
 
+        console.log('Sending chat message:', messageData);
         // The message will be added when received back from server
         webSocket.send('chatMessage', messageData);
     }
 
     receiveMessage(data) {
+        console.log('Received chat message:', data);
         // Add all received messages to chat
         this.addMessageToChat(data);
     }
 
     addMessageToChat(messageData) {
+        console.log('Adding message to chat:', messageData);
         const messagesContainer = document.querySelector('#chat-messages');
         if (!messagesContainer) {
             console.error('Chat messages container not found');
@@ -131,5 +137,10 @@ export class Chat {
             this.isMinimized = !this.isMinimized;
             chatBody.style.display = this.isMinimized ? 'none' : 'flex';
         }
+    }
+
+    destroy() {
+        // Clean up WebSocket listener
+        webSocket.off('chatMessage', this.receiveMessage);
     }
 }

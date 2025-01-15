@@ -84,8 +84,6 @@ export class Lobby extends Component {
             }
         });
 
-        webSocket.on('chat', this.handleChatMessage.bind(this));
-
         // Add timer handlers
         webSocket.on('timerUpdate', (data) => {
             const { waitingTimer, startTimer, readyCount } = data;
