@@ -36,11 +36,11 @@ export class Player {
         this.speed = 4;
         this.maxBombs = 1;
         this.activeBombs = 0;
-        this.flameRange = 2;
+        this.flameRange = 1;
         this.initialPowers = {
             speed: 4,
             maxBombs: 1,
-            flameRange: 2
+            flameRange: 1
         }
         this.isDead = false;
         this.bombsPlaced = 0;
@@ -54,11 +54,19 @@ export class Player {
         // Store spawn position separately
         this.spawnPosition = props.spawnPosition || props.position;
         this.position = { ...this.spawnPosition }; // Make a copy to avoid reference issues
+
+        this.html = {
+            cell: document.querySelector(`.player-${this.id}`),
+            playerChar: document.querySelector(`.player-character.player-${this.playerNumber}`),
+            playerTag: document.querySelector(`.player-tag.player-${this.playerNumber}`),
+        }
+
+        this.createPlayerChar();
         
         console.log(`Player ${this.id} (${this.name}) initialized at position:`, this.position, 
                     'with spawn position:', this.spawnPosition);
 
-        this.createPlayerElement();
+        this.render();
 
         // Initialize movement properties
         this.keysPressed = {};
@@ -67,6 +75,7 @@ export class Player {
         // Bind methods
         this.handleKeyDown = this.handleKeyDown.bind(this);
         this.handleKeyUp = this.handleKeyUp.bind(this);
+        this.render = this.render.bind(this)
 
         // Set up controls for local player
         if (this.isLocal) {
@@ -74,36 +83,28 @@ export class Player {
             this.initControls();
         }
     }
-
-    createPlayerElement() {
-        this.element = null;
-        // Create player element
-        const cell = document.createElement('div');
-        cell.className = `cell player-${this.id}`;
-        cell.dataset.x = this.position.x;
-        cell.dataset.y = this.position.y;
+    createPlayerChar() {
+        if (this.html.playerChar) return
+        const topCell = $(`.cell[data-x="0"][data-y="0"]`);
+        if (!topCell) return
 
         // Create character element with player number class
-        const character = document.createElement('div');
-        character.className = `player-character player-${this.playerNumber}`;
-        console.log(`Creating player ${this.name} with number ${this.playerNumber}`);
+        this.html.playerChar = document.createElement('div');
+        this.html.playerChar.className = `player-character player-${this.playerNumber}`;
+        this.html.playerChar.style.transform = 
+            `translate(${(this.position.x) * 36}px, ${(this.position.y) * 36}px)`;
 
         // Create name tag
-        const nameTag = document.createElement('div');
-        nameTag.className = 'player-tag';
-        nameTag.textContent = this.name;
+        this.html.playerTag = document.createElement('div');
+        this.html.playerTag.className = 'player-tag player-${this.playerNumber}';
+        this.html.playerTag.textContent = this.name;
 
         // Assemble elements
-        cell.appendChild(character);
-        cell.appendChild(nameTag);
-        this.element = cell;
+        this.html.playerChar.append(this.html.playerTag)
+        topCell.append(this.html.playerChar)
 
-        console.log('Created player element:', {
-            id: this.id,
-            playerNumber: this.playerNumber,
-            element: this.element.outerHTML
-        });
     }
+
 
     initControls() {
         document.addEventListener('keydown', this.handleKeyDown);
@@ -114,7 +115,6 @@ export class Player {
     update(deltaTime) {
         if (this.isDead || !this.isLocal) return;
 
-        const oldPosition = { ...this.position };
         this.isMoving = false;
 
         // Calculate movement based on pressed keys
@@ -181,39 +181,21 @@ export class Player {
         });
     }
 
-    handlePowerUp(type) {
-        switch (type) {
-            case 'bomb':
-                this.maxBombs = Math.min(this.maxBombs + 1, 8);
-                break;
-            case 'flame':
-                this.flameRange = Math.min(this.flameRange + 1, 15);
-                break;
-            case 'speed':
-                this.speed = Math.min(this.speed + 1, 10);
-                break;
-        }
-        this.powerUpsCollected++;
-    }
-
     takeDamage() {
         if (this.isDead) return true;
 
         this.lives--;
-
-        // Play damage sound
-        const audio = new Audio('/assets/sounds/damage.mp3');
-        audio.volume = 0.3;
-        audio.play().catch(() => { });
-
-        // Add visual feedback
-        const playerElement = $(`.player-${this.id}`);
-        if (playerElement) {
-            playerElement.classList.add('damaged');
-            setTimeout(() => {
-                playerElement.classList.remove('damaged');
-            }, 500);
+        
+        // Remove player from grid immediately
+        if (this.html.cell) {
+            this.html.cell.classList.remove(`player-${this.id}`);
         }
+        this.html.playerChar.style.opacity = 0.2
+        setTimeout(() => {
+            this.html.playerChar.style.opacity = 1
+        }, 1000);
+
+
         const countElement = $(`.stats-value.lives`)
         if (this.isLocal && countElement) {
             countElement.innerHTML = Math.round(this.lives)
@@ -221,12 +203,7 @@ export class Player {
 
         if (this.lives <= 0) {
             this.die();
-            return true; // Player died
         }
-
-
-
-        return false; // Player still alive
     }
 
     die(position) {
@@ -238,11 +215,6 @@ export class Player {
         if (position) {
             this.position = position;
         }
-
-        // Play death sound
-        const audio = new Audio('/assets/sounds/death.mp3');
-        audio.volume = 0.3;
-        audio.play().catch(() => { });
 
         // Create death animation
         const cell = $(`.cell[data-x="${Math.round(this.position.x)}"][data-y="${Math.round(this.position.y)}"]`);
@@ -256,17 +228,6 @@ export class Player {
                 deathEffect.remove();
             }, 1000);
         }
-
-        // Notify other players
-        webSocket.send('playerDeath', {
-            playerId: this.id,
-            position: this.position,
-            finalStats: {
-                bombsPlaced: this.bombsPlaced,
-                killCount: this.killCount,
-                powerUpsCollected: this.powerUpsCollected
-            }
-        });
     }
 
     destroy() {
@@ -291,12 +252,6 @@ export class Player {
             x: position.x,
             y: position.y
         };
-        
-        if (this.element) {
-            this.element.style.transform = 
-                `translate(${this.position.x * 40}px, ${this.position.y * 40}px)`;
-            console.log(`Updated position for player ${this.id} to:`, this.position);
-        }
     }
 
     incrementScore(points = 1) {
@@ -307,25 +262,16 @@ export class Player {
     render() {
         // Remove all previous player cells for this player
         const playerId = typeof this.id === 'object' ? JSON.stringify(this.id) : this.id;
-        const previousCell = document.querySelector(`.player-${playerId}`);
+        //const previousCell = document.querySelector(`.player-${playerId}`);
         const cellPosition = {
             x: Math.round(this.position.x),
             y: Math.round(this.position.y)
         }
 
         // remove last position only if outdated
-        if (previousCell) {
-            if (this.isDead || previousCell.dataset.x !== cellPosition.x || previousCell.dataset.y !== cellPosition.y) {
-                previousCell.classList.remove(`player-${playerId}`);
-                const playerChar = previousCell.querySelector('.player-character');
-                if (playerChar) {
-                    playerChar.remove();
-                }
-                const playerTag = previousCell.querySelector('.player-tag');
-                if (playerTag) {
-                    playerTag.remove();
-                }
-            }
+        if (this.html.cell && (this.isDead || +this.html.cell.dataset.x !== cellPosition.x || +this.html.cell.dataset.y !== cellPosition.y)) {
+            this.html.cell.classList.remove(`player-${playerId}`);
+            this.html.cell = null
         }
 
         // Don't render if dead (unless in spectator mode)
@@ -333,32 +279,26 @@ export class Player {
 
         // Get the exact cell based on rounded position. 
         // Only update position if outdated
-        if (!previousCell || previousCell.dataset.x !== cellPosition.x || previousCell.dataset.y !== cellPosition.y) {
-            const cell = $(`.cell[data-x="${cellPosition.x}"][data-y="${cellPosition.y}"]`);
-            if (cell) {
-                cell.classList.add(`player-${playerId}`);
-
-                // Use the stored player number
-                if (!cell.querySelector('.player-character')) {
-                    const playerChar = document.createElement('div');
-                    playerChar.className = `player-character player-${this.playerNumber}`;
-                    cell.appendChild(playerChar);
-                }
-
-                // Add player tag if it doesn't exist
-                if (!cell.querySelector('.player-tag')) {
-                    const playerTag = document.createElement('div');
-                    playerTag.className = 'player-tag';
-                    playerTag.textContent = this.name;
-                    cell.appendChild(playerTag);
-                }
+        if (!this.html.cell || +this.html.cell.dataset.x !== cellPosition.x || +this.html.cell.dataset.y !== cellPosition.y) {
+            this.html.cell = $(`.cell[data-x="${cellPosition.x}"][data-y="${cellPosition.y}"]`);
+            if (this.html.cell) {
+                this.html.cell.classList.add(`player-${playerId}`);
             }
+            return
         }
 
         // Update the cell position attributes
-        if (this.element) {
-            this.element.dataset.x = cellPosition.x;
-            this.element.dataset.y = cellPosition.y;
+        if (!this.html.playerChar || !document.body.contains(this.html.playerChar)) {
+            this.html.playerChar = this.html.cell.querySelector(`.player-character.player-${this.playerNumber}`);
+            if (!this.html.playerChar) {
+                this.createPlayerChar();
+                return
+            }
+        }
+        
+        if (this.html.playerChar) {
+            this.html.playerChar.style.transform = 
+                `translate(${(this.position.x) * 36}px, ${(this.position.y) * 36}px)`;
         }
     }
 }

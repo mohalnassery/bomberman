@@ -545,6 +545,11 @@ class GameServer {
             maxBombs: 1,
             flameRange: 1,
             speed: 4,
+            initialPowers: {
+                speed: 4,
+                maxBombs: 1,
+                flameRange: 1
+            }, 
             position: null,
             spawnPosition: null
         };

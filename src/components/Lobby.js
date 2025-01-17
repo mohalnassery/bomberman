@@ -37,11 +37,6 @@ export class Lobby extends Component {
             if (session.currentPage === '#/') {
                 // Connect to websocket first
                 webSocket.connect().then(() => {
-                    // Send leave event for the previous session
-                    webSocket.send('playerLeave', {
-                        playerId: session.playerId,
-                        sessionId: session.playerId
-                    });
                     
                     // Clear the session
                     localStorage.removeItem('playerSession');

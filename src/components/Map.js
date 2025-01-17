@@ -153,7 +153,7 @@ export class GameMap {
                 setTimeout(() => {
                     //cell.classList.remove('explosion');
                     this.grid[pos.y][pos.x].explosion = false
-                }, 1000);
+                }, 500);
             }
         });
     }
@@ -286,7 +286,7 @@ export class GameMap {
                 newX = Math.max(cellX, newX)
             }
         }
-        if (cellY <= this.width) {
+        if (cellX <= this.width) {
             const cell = this.grid[cellY][cellX + 1]
             if (cell && (
                 cell.type === 'wall' ||

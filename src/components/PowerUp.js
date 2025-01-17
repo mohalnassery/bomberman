@@ -48,7 +48,6 @@ export class PowerUp {
         if (this.collected) return;
         
         this.collected = true;
-        player.handlePowerUp(this.type)
         
         // Update game map
         const cell = this.gameMap.grid[this.position.y][this.position.x];
@@ -74,10 +73,8 @@ export class PowerUp {
             }, 1000);
         }
         const countElement = $(`.power-up-count.${this.type}`)
-        console.log("here2", player.isLocal, countElement, this.type)
         if (player.isLocal && countElement) {
             const playerProperty = this.getPlayerProperty()
-            console.log(player, player[playerProperty], player.initialPowers[playerProperty], Math.floor(player[playerProperty] - player.initialPowers[playerProperty]))
             countElement.innerHTML = Math.floor(player[playerProperty] - player.initialPowers[playerProperty]);
         }
     }
