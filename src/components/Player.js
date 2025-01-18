@@ -33,12 +33,12 @@ export class Player {
         this.serverPosition = { ...this.position }; // Server's last known position
         this.targetPosition = { ...this.position };  // Position to interpolate towards
         this.lives = 3;
-        this.speed = 4;
+        this.speed = 8;
         this.maxBombs = 1;
         this.activeBombs = 0;
         this.flameRange = 1;
         this.initialPowers = {
-            speed: 4,
+            speed: 8,
             maxBombs: 1,
             flameRange: 1
         }
@@ -50,6 +50,7 @@ export class Player {
         this.lastServerUpdate = Date.now();
         this.updateThrottleMs = 50; // Send updates every 50ms
         this.interpolationFactor = 0.2; // Adjust for smoother movement
+        this.isInvincible = false
 
         // Store spawn position separately
         this.spawnPosition = props.spawnPosition || props.position;
@@ -96,7 +97,7 @@ export class Player {
 
         // Create name tag
         this.html.playerTag = document.createElement('div');
-        this.html.playerTag.className = 'player-tag player-${this.playerNumber}';
+        this.html.playerTag.className = `player-tag player-${this.playerNumber}`;
         this.html.playerTag.textContent = this.name;
 
         // Assemble elements
@@ -112,31 +113,32 @@ export class Player {
         console.log('Keyboard controls initialized');
     }
 
-    update(deltaTime) {
+    getMovementDelta(deltaTime) {
         if (this.isDead || !this.isLocal) return;
-
-        this.isMoving = false;
+        
+        const delta = {
+            x: 0,
+            y: 0
+        }
 
         // Calculate movement based on pressed keys
-        const moveSpeed = this.speed * deltaTime;
+        const moveSpeed = Math.max(Math.min((this.speed * deltaTime)/2,1),-1);
 
         if (this.keysPressed['ArrowUp'] || this.keysPressed['w']) {
-            this.position.y -= moveSpeed;
-            this.isMoving = true;
+            delta.y -= moveSpeed;
         }
         if (this.keysPressed['ArrowDown'] || this.keysPressed['s']) {
-            this.position.y += moveSpeed;
-            this.isMoving = true;
+            delta.y += moveSpeed;
         }
         if (this.keysPressed['ArrowLeft'] || this.keysPressed['a']) {
-            this.position.x -= moveSpeed;
-            this.isMoving = true;
+            delta.x -= moveSpeed;
         }
         if (this.keysPressed['ArrowRight'] || this.keysPressed['d']) {
-            this.position.x += moveSpeed;
+            delta.x += moveSpeed;
             this.isMoving = true;
         }
-
+        
+        return delta
     }
 
     handleKeyDown(event) {
@@ -167,15 +169,10 @@ export class Player {
     }
 
     placeBomb() {
-        console.log("activeBombs", this.activeBombs)
         if (this.activeBombs >= this.maxBombs || this.isDead) return;
 
-        const bombX = Math.round(this.position.x);
-        const bombY = Math.round(this.position.y);
-
-        console.log("sendBomb")
         webSocket.send('placeBomb', {
-            position: { x: bombX, y: bombY },
+            position: { x: Math.round(this.position.x), y: Math.round(this.position.y) },
             range: this.flameRange,
             timestamp: Date.now()
         });

@@ -116,8 +116,11 @@ class GameServer {
             .filter(p => !p.isDead);
 
         if (alivePlayers.length <= 1) {
-            const winner = alivePlayers[0];
-            this.endGame(winner);
+            const winner = alivePlayers[0] || null;
+            setTimeout(() => {
+                console.log(`Game Over - Winner: ${winner.nickname}`);
+                this.endGame(winner);
+            }, 1000);
         }
     }
 
@@ -206,10 +209,10 @@ class GameServer {
         const position = data.position;
         if (!position || this.gameState.grid[position.y][position.x].bomb) return;
         const player = this.gameState.players.get(playerId);
-        if (!player) return;
+        if (!player || player.activeBombs >= player.maxBombs) return;
 
         const bomb = {
-            id: this.gameState.bombs.size + 1,
+            id: `${data.timestamp}${playerId}`,
             position: position,
             playerId: playerId,
             range: data.range,
@@ -269,7 +272,7 @@ class GameServer {
             // Maybe we can also keep track of players in the grid? might be overcomplicating other stuff by doing that though
             // Check for affected players
             this.gameState.players.forEach((player, playerId) => {
-                if (!player.isDead && Math.round(player.position.x) === pos.x && Math.round(player.position.y) === pos.y) {
+                if (!player.isDead && !player.isInvincible && Math.round(player.position.x) === pos.x && Math.round(player.position.y) === pos.y) {
                     affectedPlayers.add(playerId);
                     
                     // Make sure lives is a number
@@ -309,24 +312,17 @@ class GameServer {
                             lives: player.lives // Include lives in death broadcast
                         });
                         
-                        // Check for game over
-                        const alivePlayers = Array.from(this.gameState.players.values())
-                            .filter(p => !p.isDead);
-                        
-                        console.log(`Alive players remaining: ${alivePlayers.length}`);
-                        
-                        if (alivePlayers.length === 1) {
-                            const winner = alivePlayers[0];
-                            console.log(`Game Over - Winner: ${winner.nickname}`);
-                            this.endGame(winner);
-                        } else if (alivePlayers.length === 0) {
-                            console.log('Game Over - No winners');
-                            this.endGame(null);
-                        }
+                    } else {
+                        player.isInvincible = true
+                        setTimeout(() => {
+                            player.isInvincible = false
+                        }, 1000);
                     }
                 }
             });
         });
+
+        this.gameState.players.set(bomb.playerId, bomber)
 
 
         // Remove the exploded bomb
@@ -358,7 +354,6 @@ class GameServer {
             }, 100);
         }
 
-        // Check game over condition
         this.checkGameOver();
     }
 
@@ -544,14 +539,15 @@ class GameServer {
             powerUpsCollected: 0,
             maxBombs: 1,
             flameRange: 1,
-            speed: 4,
+            speed: 8,
             initialPowers: {
-                speed: 4,
+                speed: 8,
                 maxBombs: 1,
                 flameRange: 1
             }, 
             position: null,
-            spawnPosition: null
+            spawnPosition: null,
+            isInvincible: false
         };
 
         // Add new player to game state
@@ -980,7 +976,7 @@ class GameServer {
                 player.flameRange = Math.min(player.flameRange + 1, 8);
                 break;
             case 'speed':
-                player.speed = Math.min(player.speed + 0.5, 10);
+                player.speed = Math.min(player.speed + 1, 20);
                 break;
         }
 

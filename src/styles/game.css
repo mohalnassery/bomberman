@@ -43,13 +43,14 @@
 .cell.wall {
     background-color: #666;
     border: 2px solid #333;
-    z-index: 10;  /* Same as blocks */
+    z-index: 10;
     box-sizing: border-box;
 }
 
 .cell.block {
     background-color: #38813a;
     border: 1px solid #555;
+    z-index: 1;
 }
 
 .cell.block.power-up,
@@ -105,25 +106,25 @@
     background: rgba(0,0,0,0.7);
     padding: 2px 4px;
     border-radius: 3px;
-    z-index: 10;
+    z-index: 500;
     max-width: 35px;
     overflow: hidden;
 }
 
 /* Player Name Tag Colors */
-.player-1 ~ .player-tag {
+.player-1.player-tag {
     color: white;
 }
 
-.player-2 ~ .player-tag {
+.player-2.player-tag {
     color: blue;
 }
 
-.player-3 ~ .player-tag {
+.player-3.player-tag {
     color:#ffff44;
 }
 
-.player-4 ~ .player-tag {
+.player-4.player-tag {
     color: #ff4444;
 }
 

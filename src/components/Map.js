@@ -248,53 +248,146 @@ export class GameMap {
         return cells;
     }
 
-    avoidCollision(x, y) {
+    avoidCollision(pos, delta) {
+        let newX = pos.x + delta.x;
+        let newY = pos.y + delta.y
 
-        const cellX = Math.round(x);
-        const cellY = Math.round(y);
+        const cellX = Math.round(pos.x);
+        const cellY = Math.round(pos.y);
+        const cellDeltaX = newX - cellX;
+        const cellDeltaY = newY - cellY;
+        console.log("positions", pos.x, pos.y)
+        console.log("deltas", cellDeltaX, cellDeltaY)
 
-        let newX = x;
-        let newY = y;
 
-        if (cellY > 0) {
-            const cell = this.grid[cellY - 1][cellX]
+        if (delta.y <= 0 && cellY > 0) {
+            let cell = this.grid[cellY - 1][cellX]
             if (cell && (
                 cell.type === 'wall' ||
                 cell.type === 'block' ||
                 cell.bomb
             )) {
                 newY = Math.max(cellY, newY)
+            } else {
+                if (cellDeltaX > 0.25 && cellX < this.width - 1) {
+                    cell = this.grid[cellY - 1][cellX + 1]
+                    if (cell && (
+                        cell.type === 'wall' ||
+                        cell.type === 'block' ||
+                        cell.bomb
+                    )) {
+                        newY = Math.max(cellY, newY)
+                    }
+                } else if (cellDeltaX < -0.25 && cellX > 0) {
+                    cell = this.grid[cellY - 1][cellX - 1]
+                    if (cell && (
+                        cell.type === 'wall' ||
+                        cell.type === 'block' ||
+                        cell.bomb
+                    )) {
+                        newY = Math.max(cellY, newY)
+                    }
+                }
             }
         }
-        if (cellY <= this.height) {
-            const cell = this.grid[cellY + 1][cellX]
+
+        if (delta.y >= 0 && cellY < this.height - 1) {
+            let cell = this.grid[cellY + 1][cellX]
             if (cell && (
                 cell.type === 'wall' ||
                 cell.type === 'block' ||
                 cell.bomb
             )) {
                 newY = Math.min(cellY, newY)
+            } else {
+                if (cellDeltaX > 0.25 && cellX < this.width - 1) {
+                    cell = this.grid[cellY + 1][cellX + 1]
+                    if (cell && (
+                        cell.type === 'wall' ||
+                        cell.type === 'block' ||
+                        cell.bomb
+                    )) {
+                        newY = Math.min(cellY, newY)
+                    }
+                } else if (cellDeltaX < -0.25 && cellX > 0) {
+                    cell = this.grid[cellY + 1][cellX - 1]
+                    if (cell && (
+                        cell.type === 'wall' ||
+                        cell.type === 'block' ||
+                        cell.bomb
+                    )) {
+                        newY = Math.min(cellY, newY)
+                    }
+                }
             }
         }
-        if (cellX > 0) {
-            const cell = this.grid[cellY][cellX - 1]
+
+        if (delta.x <= 0 && cellX > 0) {
+            let cell = this.grid[cellY][cellX - 1]
             if (cell && (
                 cell.type === 'wall' ||
                 cell.type === 'block' ||
                 cell.bomb
             )) {
                 newX = Math.max(cellX, newX)
+            } else {
+                if (cellDeltaY > 0.25 && cellY < this.height - 1) {
+                    cell = this.grid[cellY + 1][cellX - 1]
+                    if (cell && (
+                        cell.type === 'wall' ||
+                        cell.type === 'block' ||
+                        cell.bomb
+                    )) {
+                        newX = Math.max(cellX, newX)
+                    }
+                }
+                if (cellDeltaY < -0.25 && cellY > 0) {
+                    cell = this.grid[cellY - 1][cellX - 1]
+                    if (cell && (
+                        cell.type === 'wall' ||
+                        cell.type === 'block' ||
+                        cell.bomb
+                    )) {
+                        newX = Math.max(cellX, newX)
+                    }
+                }
             }
         }
-        if (cellX <= this.width) {
-            const cell = this.grid[cellY][cellX + 1]
+
+        if (delta.x >= 0 && cellX < this.width - 1) {
+            let cell = this.grid[cellY][cellX + 1]
             if (cell && (
                 cell.type === 'wall' ||
                 cell.type === 'block' ||
                 cell.bomb
             )) {
                 newX = Math.min(cellX, newX)
+            } else {
+                if (cellDeltaY > 0.25 && cellY < this.height - 1) {
+                    cell = this.grid[cellY + 1][cellX + 1]
+                    if (cell && (
+                        cell.type === 'wall' ||
+                        cell.type === 'block' ||
+                        cell.bomb
+                    )) {
+                        newX = Math.min(cellX, newX)
+                    }
+                } else if (cellDeltaY < -0.25 && cellY > 0) {
+                    cell = this.grid[cellY - 1][cellX + 1]
+                    if (cell && (
+                        cell.type === 'wall' ||
+                        cell.type === 'block' ||
+                        cell.bomb
+                    )) {
+                        newX = Math.min(cellX, newX)
+                    }
+                }
+
             }
+        }
+
+        if (newY < 0 || newX < 0) {
+            console.log("chicanery", pos, delta, newX, newY)
         }
 
         return { x: newX, y: newY }
@@ -363,10 +456,10 @@ export class GameMap {
                 // Debug power-up data
                 if (cellData.powerUp) {
                     // Ensure we have a valid string type
-                    const powerUpType = typeof cellData.powerUp === 'string' 
-                        ? cellData.powerUp.toLowerCase() 
+                    const powerUpType = typeof cellData.powerUp === 'string'
+                        ? cellData.powerUp.toLowerCase()
                         : cellData.powerUp.type?.toLowerCase();
-                        
+
                     if (powerUpType && !cell.classList.contains(`power-up-${powerUpType}`)) {
                         cell.classList.add('power-up', `power-up-${powerUpType}`);
                     }

@@ -110,12 +110,12 @@ export class Game extends Component {
         const player = this.players.get(this.localPlayerId)
         if (!player.isDead) {
             const oldPosition = { ...player.position };
-            player.update(deltaTime);
+            const playerDelta = player.getMovementDelta(deltaTime);
 
             // isMoving is true when detecting an input
-            if (player.isMoving) {
+            if (playerDelta.x !== 0 || playerDelta.y !== 0) {
                 // remove any collision from the new positions
-                player.position = this.map.avoidCollision(player.position.x, player.position.y);
+                player.position = this.map.avoidCollision(player.position, playerDelta);
                 // If the new position is identical to the old one, dont bother sending a WS
                 if (player.position.x !== oldPosition.x || player.position.y !== oldPosition.y) {
                     //player.updatePosition(player.position)
