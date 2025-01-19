@@ -19,9 +19,10 @@ export class Chat {
         this.messages = [];
         this.isMinimized = false;
         this.container = null;
+        this.messageHandler = this.receiveMessage.bind(this);
         
         // Register WebSocket listener for chat messages
-        webSocket.on('chatMessage', (data) => this.receiveMessage(data));
+        webSocket.on('chatMessage', this.messageHandler);
     }
 
     initialize(container) {
@@ -141,6 +142,7 @@ export class Chat {
 
     destroy() {
         // Clean up WebSocket listener
-        webSocket.off('chatMessage', this.receiveMessage);
+        webSocket.off('chatMessage', this.messageHandler);
+        this.container = null;
     }
 }

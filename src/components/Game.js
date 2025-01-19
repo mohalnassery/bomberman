@@ -577,7 +577,13 @@ export class Game extends Component {
 
             // Initialize chat in right panel
             if (!this.chat) {
-                this.chat = new Chat(this.nickname);
+                // Try to reuse existing chat from localStorage if it exists
+                const playerInfo = JSON.parse(localStorage.getItem('playerInfo'));
+                if (playerInfo && playerInfo.nickname) {
+                    this.chat = new Chat(playerInfo.nickname);
+                } else {
+                    this.chat = new Chat(this.nickname);
+                }
             }
             this.chat.initialize(rightPanel);
 
@@ -618,6 +624,7 @@ export class Game extends Component {
         this.isRunning = false;
         if (this.chat) {
             this.chat.destroy();
+            this.chat = null;
         }
         webSocket.disconnect();
         super.destroy();

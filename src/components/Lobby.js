@@ -1,6 +1,7 @@
 import { Component } from '../core/component.js';
 import { Store } from '../core/state.js';
 import webSocket from '../core/websocket.js';
+import { Chat } from './Chat.js';
 
 export class Lobby extends Component {
     constructor(props) {
@@ -24,6 +25,7 @@ export class Lobby extends Component {
         this.playerId = null;
         this.nickname = '';
         this.errorMessage = '';
+        this.chat = null;
         
         // Check for existing session
         const playerSession = localStorage.getItem('playerSession');
@@ -166,6 +168,11 @@ export class Lobby extends Component {
                 nickname: this.nickname,
                 sessionId: this.playerId
             });
+
+            // Initialize chat after successful join
+            if (!this.chat) {
+                this.chat = new Chat(this.nickname);
+            }
 
         } catch (error) {
             console.error('Failed to join game:', error);
@@ -787,13 +794,29 @@ export class Lobby extends Component {
                 
         }
 
-        html += `</div></div></div>`;
+        html += `</div>`;
+
+        // Add chat container if joined
+        if (this.isJoined) {
+            html += `<div class="game-panel right-panel"></div>`;
+        }
+
+        html += `</div></div>`;
         
         const root = document.getElementById('root');
         if (root) {
             root.innerHTML = html;
             this.attachEventListeners();
-            this.initialRenderDone = true; // Mark initial render as complete
+            
+            // Initialize chat if joined
+            if (this.isJoined && this.chat) {
+                const rightPanel = document.querySelector('.right-panel');
+                if (rightPanel) {
+                    this.chat.initialize(rightPanel);
+                }
+            }
+            
+            this.initialRenderDone = true;
         }
     }
 
@@ -859,6 +882,11 @@ export class Lobby extends Component {
         if (window.location.hash !== '#/game' || !session || session.currentPage !== '#/game') {
             localStorage.removeItem('playerSession');
             localStorage.removeItem('playerInfo');
+        }
+
+        // Clean up chat if it exists
+        if (this.chat) {
+            this.chat.destroy();
         }
         
         this.mounted = false;
