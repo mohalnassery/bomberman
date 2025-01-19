@@ -25,28 +25,32 @@
 .cell.power-up.power-up-bomb {
     background: url('./image/bomb.png') center/contain no-repeat;
     background-size: 80%;
+    background-color:#2196F3;
 }
 
 .cell.power-up.power-up-flame {
     background: url('./image/flame.png') center/contain no-repeat;
     background-size: 90%;
+    background-color:#2196F3;
 }
 
 .cell.power-up.power-up-speed {
     background: url('./image/speed.png') center/contain no-repeat;
     background-size: 90%;
+    background-color:#2196F3;
 }
 
 .cell.wall {
     background-color: #666;
     border: 2px solid #333;
-    z-index: 10;  /* Same as blocks */
+    z-index: 10;
     box-sizing: border-box;
 }
 
 .cell.block {
     background-color: #38813a;
     border: 1px solid #555;
+    z-index: 1;
 }
 
 .cell.block.power-up,
@@ -57,17 +61,17 @@
 }
 
 .player-character {
-    width: 24px;
-    height: 24px;
+    width: 35px;
+    height: 35px;
     position: absolute;
-    transition: all 0.3s ease;
+    /* transition: all 0.3s ease; */
     display: flex;
     justify-content: center;
     align-items: center;
     font-weight: bold;
     color: white;
     font-size: 14px;
-    background-size: contain;
+    background-size: 24px 24px;
     background-repeat: no-repeat;
     background-position: center;
 }
@@ -102,25 +106,25 @@
     background: rgba(0,0,0,0.7);
     padding: 2px 4px;
     border-radius: 3px;
-    z-index: 10;
+    z-index: 500;
     max-width: 35px;
     overflow: hidden;
 }
 
 /* Player Name Tag Colors */
-.player-1 ~ .player-tag {
+.player-1.player-tag {
     color: white;
 }
 
-.player-2 ~ .player-tag {
+.player-2.player-tag {
     color: blue;
 }
 
-.player-3 ~ .player-tag {
+.player-3.player-tag {
     color:#ffff44;
 }
 
-.player-4 ~ .player-tag {
+.player-4.player-tag {
     color: #ff4444;
 }
 

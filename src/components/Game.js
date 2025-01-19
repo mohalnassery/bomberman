@@ -110,28 +110,23 @@ export class Game extends Component {
         const player = this.players.get(this.localPlayerId)
         if (!player.isDead) {
             const oldPosition = { ...player.position };
-            player.update(deltaTime);
+            const playerDelta = player.getMovementDelta(deltaTime);
 
-            // If moved and no collision, update position
-            if (player.isMoving) {
-                // Update visual position immediately for local player
-                player.position = this.map.avoidCollision(player.position.x, player.position.y)
-                player.updatePosition(player.position)
-                webSocket.send('playerMove', {
-                    position: player.position,
-                    timestamp: Date.now()
-                });
-            } else {
-                // Reset position if collision
-                player.position = oldPosition;
-            }
+            // isMoving is true when detecting an input
+            if (playerDelta.x !== 0 || playerDelta.y !== 0) {
+                // remove any collision from the new positions
+                player.position = this.map.avoidCollision(player.position, playerDelta);
+                // If the new position is identical to the old one, dont bother sending a WS
+                if (player.position.x !== oldPosition.x || player.position.y !== oldPosition.y) {
+                    //player.updatePosition(player.position)
+                    webSocket.send('playerMove', {
+                        position: player.position,
+                        timestamp: Date.now()
+                    });
+                }
+            } 
         }
-
-        // removed bomb countdown and explosion stuff because that should be server side
-        // removed win check because that should only happen during explosions, and also on server side
     }
-
-    // removed checkGameOver because that is server side
 
     showGameOverScreen() {
         console.log('Showing game over screen'); // Debug log
@@ -333,16 +328,6 @@ export class Game extends Component {
         affectedPlayers.forEach((playerId, index) => {
             const player = this.players.get(playerId);
             if (player) {
-                // Remove player from grid immediately
-                const playerCell = document.querySelector(`.player-${playerId}`);
-                if (playerCell) {
-                    const playerChar = playerCell.querySelector('.player-character');
-                    const playerTag = playerCell.querySelector('.player-tag');
-                    if (playerChar) playerChar.remove();
-                    if (playerTag) playerTag.remove();
-                    playerCell.classList.remove(`player-${playerId}`);
-                }
-                
                 player.takeDamage();
                 if (player.lives <= 0 && playerId === this.localPlayerId) {
                     this.enterSpectatorMode();
@@ -563,7 +548,7 @@ export class Game extends Component {
             // Create center panel (game map)
             const centerPanel = document.createElement('div');
             centerPanel.className = 'game-panel center-panel';
-            centerPanel.innerHTML = '<div class="map-container"></div>';
+            centerPanel.innerHTML = `<div class="map-container"></div>`;
 
             // Create right panel (chat)
             const rightPanel = document.createElement('div');
@@ -590,11 +575,6 @@ export class Game extends Component {
             // Add event listener for leave game button
             document.getElementById('leaveGameBtn').addEventListener('click', () => {
                 if (confirm('Are you sure you want to leave the game?')) {
-                    // Notify server that player is leaving
-                    webSocket.send('playerLeave', {
-                        playerId: this.localPlayerId
-                    });
-
                     // Use existing handler to clean up player
                     this.handlePlayerLeave({ playerId: this.localPlayerId });
 
