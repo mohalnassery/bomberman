@@ -251,7 +251,7 @@
 
 .center-panel {
     width:fit-content;
-    min-width: 400px;
+    min-width: 545px;
     display: flex;
     justify-content: center;
     align-items: center;
