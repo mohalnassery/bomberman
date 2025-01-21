@@ -849,7 +849,7 @@ class GameServer {
 
         this.waitingTimer = null;
         // 10s
-        this.startTimer = 3;
+        this.startTimer = 10;
 
         // Broadcast initial countdown state
         this.broadcastTimers();
@@ -882,7 +882,7 @@ class GameServer {
 
     startWaitingPhase() {
         // Start 20s waiting timer for 2-3 players
-        this.waitingTimer = 5;
+        this.waitingTimer = 20;
         this.gameState.gameStatus = "waiting"
         console.log('Starting waiting timer:', this.waitingTimer); // Debug log
 
@@ -905,19 +905,23 @@ class GameServer {
     updateTimers() {
         console.log('Ready players:', this.gameState.readyCount); // Debug log
 
-        // Clear and reset any existing timers
-        this.clearTimers();
+        // If timers are already running, don't reset them
+        if (this.waitingInterval || this.startInterval) {
+            return;
+        }
 
         // Handle different ready player counts
         if (this.checkAllReady()) {
             // If 4 players are ready, skip waiting phase
             if (this.gameState.readyCount === 4) {
                 this.startGameCountdown();
-            } else {
+            } else if (!this.waitingTimer && !this.startTimer) {
+                // Only start waiting phase if no timer is running
                 this.startWaitingPhase();
             }
         } else {
             // Less than 2 ready players
+            this.clearTimers();
             this.broadcast('timerUpdate', {
                 waitingTimer: null,
                 startTimer: null,

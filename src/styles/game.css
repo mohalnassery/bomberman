@@ -226,7 +226,7 @@
 .game-container {
     padding: 20px;
     gap: 20px;
-    height: 100vh;
+    height: 95vh;
     display: flex;
     align-items: center;
     justify-content: center;
